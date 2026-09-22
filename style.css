@@ -152,7 +152,14 @@ button {
   margin: 0 10px 28px;
 }
 
+.lb-lobby-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .lb-balance-card,
+.lb-admin-link,
 .lb-refresh {
   border: 0;
   cursor: pointer;
@@ -161,6 +168,8 @@ button {
 
 .lb-balance-card:hover,
 .lb-balance-card:focus-visible,
+.lb-admin-link:hover,
+.lb-admin-link:focus-visible,
 .lb-refresh:hover,
 .lb-refresh:focus-visible {
   transform: translateY(-2px);
@@ -225,7 +234,12 @@ button {
   line-height: 0.7;
 }
 
+.lb-admin-link,
 .lb-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
   padding: 12px 17px 13px;
   border-radius: 8px;
   background: #18345f;
@@ -234,7 +248,13 @@ button {
   font-size: 24px;
   font-weight: 700;
   line-height: 1;
+  text-decoration: none;
   box-shadow: 0 5px 0 rgba(0, 0, 0, 0.12);
+}
+
+.lb-admin-link {
+  background: var(--orange);
+  color: var(--white);
 }
 
 .lb-room-list {
@@ -411,9 +431,10 @@ button {
   z-index: 10;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: rgba(8, 24, 43, 0.72);
-  backdrop-filter: blur(4px);
+  padding: clamp(12px, 4vw, 30px);
+  background: rgba(3, 24, 46, 0.76);
+  backdrop-filter: blur(7px);
+  animation: lb-wallet-fade 0.2s ease both;
 }
 
 .lb-overlay[hidden] {
@@ -421,14 +442,17 @@ button {
 }
 
 .lb-wallet-panel {
-  width: min(100%, 520px);
-  max-height: calc(100dvh - 48px);
+  width: min(100%, 650px);
+  max-height: min(900px, calc(100dvh - 32px));
   overflow: auto;
-  padding: 25px;
-  border-radius: 18px;
-  background: #f6f9fc;
+  padding: clamp(22px, 4vw, 34px);
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 26px;
+  background: linear-gradient(145deg, #f8fbff 0%, #eef4fb 100%);
   color: var(--ink);
-  box-shadow: 0 18px 60px rgba(1, 22, 49, 0.4);
+  box-shadow: 0 28px 90px rgba(1, 22, 49, 0.48), 0 0 0 8px rgba(255, 255, 255, 0.05);
+  animation: lb-wallet-rise 0.24s ease both;
+  scrollbar-color: #b9c9db transparent;
 }
 
 .lb-wallet-panel-head {
@@ -439,59 +463,99 @@ button {
 }
 
 .lb-eyebrow {
-  color: #6a7c95;
+  color: #70839d;
   font-family: Consolas, "Courier New", monospace;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 1.6px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
 }
 
 .lb-wallet-panel h2 {
-  margin-top: 5px;
-  color: #172b4d;
-  font-size: clamp(23px, 5vw, 32px);
-  line-height: 1.1;
+  margin-top: 7px;
+  color: #172f55;
+  font-size: clamp(27px, 5vw, 42px);
+  letter-spacing: -1px;
+  line-height: 1.05;
+}
+
+.lb-wallet-subtitle {
+  margin-top: 8px;
+  color: #71849d;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .lb-panel-close {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
   border: 0;
-  border-radius: 9px;
-  background: #e4eaf2;
-  color: #294365;
+  border-radius: 13px;
+  background: #e3eaf3;
+  color: #2b486c;
   font-family: Arial, sans-serif;
-  font-size: 30px;
+  font-size: 34px;
+  font-weight: 300;
   line-height: 0.8;
   cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
 
 .lb-panel-close:hover,
 .lb-panel-close:focus-visible {
-  background: #d6e0ed;
+  background: #d2deed;
+  color: #14345d;
   outline: none;
+  transform: rotate(4deg);
 }
 
 .lb-wallet-summary {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 23px;
-  padding: 17px 18px;
-  border-radius: 12px;
-  background: #e9eef5;
-  color: #60728c;
-  font-size: 15px;
+  gap: 18px;
+  margin-top: 25px;
+  padding: 19px 22px;
+  border: 1px solid #dbe5f0;
+  border-radius: 15px;
+  background: #e8eef6;
+  color: #607490;
+}
+
+.lb-wallet-summary > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.lb-summary-label {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.lb-summary-hint {
+  color: #8b9bb0;
+  font-size: 11px;
 }
 
 .lb-wallet-summary strong {
-  color: #1b3457;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  color: #1c385d;
   font-family: Consolas, "Courier New", monospace;
-  font-size: 21px;
+  font-size: clamp(24px, 5vw, 29px);
   white-space: nowrap;
+}
+
+.lb-wallet-summary strong em {
+  color: #6c8099;
+  font-family: inherit;
+  font-size: 15px;
+  font-style: normal;
 }
 
 .lb-wallet-tabs {
@@ -500,28 +564,39 @@ button {
   gap: 5px;
   margin-top: 20px;
   padding: 5px;
-  border-radius: 10px;
-  background: #e2e9f2;
+  border: 1px solid #dbe4ef;
+  border-radius: 13px;
+  background: #e0e8f2;
 }
 
 .lb-wallet-tabs button {
-  min-height: 42px;
+  min-height: 49px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 9px;
   background: transparent;
-  color: #63758e;
-  font-weight: 700;
+  color: #657993;
+  font-size: 16px;
+  font-weight: 800;
   cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
 }
 
 .lb-wallet-tabs button.is-active {
   background: #fff;
-  color: #1c3c67;
-  box-shadow: 0 2px 8px rgba(24, 55, 93, 0.12);
+  color: #1b3e6b;
+  box-shadow: 0 3px 10px rgba(24, 55, 93, 0.13);
+}
+
+.lb-wallet-tabs button:hover:not(.is-active) {
+  color: #2e527e;
 }
 
 .lb-wallet-tabs button:focus-visible,
-.lb-method:focus-visible {
+.lb-provider:focus-visible,
+.lb-wallet-submit:focus-visible,
+.lb-payment-account button:focus-visible,
+.lb-wallet-form input:focus-visible,
+.lb-wallet-form textarea:focus-visible {
   outline: 3px solid rgba(8, 104, 173, 0.28);
   outline-offset: 2px;
 }
@@ -532,90 +607,462 @@ button {
 
 .lb-wallet-view.is-active {
   display: block;
+  animation: lb-wallet-content 0.18s ease both;
 }
 
-.lb-wallet-intro {
-  margin: 19px 0 13px;
-  color: #6a7c95;
-  font-size: 14px;
-  line-height: 1.45;
+.lb-wallet-promo,
+.lb-wallet-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding: 13px 14px;
+  border-radius: 13px;
+  line-height: 1.35;
 }
 
-.lb-methods {
+.lb-wallet-promo {
+  border: 1px solid #f2d98a;
+  background: linear-gradient(135deg, #fff7d8, #fffbe9);
+  color: #725b1e;
+}
+
+.lb-promo-icon {
   display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  background: #ffe9a3;
+  font-size: 19px;
+}
+
+.lb-wallet-promo > div,
+.lb-wallet-alert > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.lb-wallet-promo strong,
+.lb-wallet-alert strong {
+  color: #5f4a14;
+  font-size: 13px;
+}
+
+.lb-wallet-promo div span,
+.lb-wallet-alert div span {
+  color: #927a36;
+  font-size: 12px;
+}
+
+.lb-promo-badge {
+  margin-left: auto;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #ffedb0;
+  color: #80661d;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.lb-wallet-alert {
+  border: 1px solid #f0c98d;
+  background: #fff6e6;
+}
+
+.lb-alert-icon {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #ffe1ac;
+  color: #a96913;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.lb-wallet-alert strong {
+  color: #76501d;
+}
+
+.lb-wallet-alert div span {
+  color: #9a7a4d;
+}
+
+.lb-wallet-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 22px 0 11px;
+}
+
+.lb-step-index {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #dceafa;
+  color: #1665a3;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.lb-wallet-section-head > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.lb-wallet-section-head strong {
+  color: #223f65;
+  font-size: 15px;
+}
+
+.lb-wallet-section-head small {
+  color: #8192a7;
+  font-size: 11px;
+}
+
+.lb-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
-.lb-method {
-  display: grid;
-  grid-template-columns: 40px 1fr 22px;
+.lb-provider {
+  position: relative;
+  display: flex;
   align-items: center;
-  gap: 12px;
-  width: 100%;
-  padding: 13px 14px;
-  border: 1px solid #dce4ee;
-  border-radius: 12px;
+  gap: 9px;
+  min-width: 0;
+  padding: 11px 10px;
+  border: 1px solid #d5e0eb;
+  border-radius: 13px;
   background: #fff;
   color: var(--ink);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
 }
 
-.lb-method:hover {
-  border-color: #77a7d2;
-  box-shadow: 0 5px 14px rgba(25, 71, 116, 0.1);
+.lb-provider:hover {
+  border-color: #91b7da;
+  box-shadow: 0 6px 16px rgba(25, 71, 116, 0.1);
   transform: translateY(-1px);
 }
 
-.lb-method-icon {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  background: #e6f2fb;
-  color: #0b70b8;
-  font-family: Arial, sans-serif;
-  font-size: 25px;
-  font-weight: 700;
+.lb-provider.is-selected {
+  border-color: #2686c8;
+  background: #f1f8fe;
+  box-shadow: 0 0 0 2px rgba(38, 134, 200, 0.12);
 }
 
-.lb-method-copy {
+.lb-provider-logo {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 1px solid #e3eaf2;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.lb-provider-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.lb-provider-copy {
   display: flex;
   flex-direction: column;
   gap: 3px;
   min-width: 0;
 }
 
-.lb-method-copy strong {
-  color: #1d3557;
-  font-size: 15px;
-}
-
-.lb-method-copy small {
+.lb-provider-copy strong {
   overflow: hidden;
-  color: #7b8ba1;
-  font-size: 12px;
-  line-height: 1.35;
+  color: #223d62;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.lb-method-arrow {
-  color: #8292a7;
-  font-family: Arial, sans-serif;
-  font-size: 28px;
-  line-height: 1;
-  text-align: right;
+.lb-provider-copy small {
+  color: #8a9bb0;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.lb-provider-check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  flex: 0 0 auto;
+  border: 1px solid #c7d5e4;
+  border-radius: 50%;
+  color: transparent;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.lb-provider.is-selected .lb-provider-check {
+  border-color: #1980c4;
+  background: #1980c4;
+  color: #fff;
+}
+
+.lb-payment-account {
+  margin-top: 13px;
+  padding: 15px 17px;
+  border: 1px solid #b9dbf2;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #eaf6ff, #f5fbff);
+  color: #2a5279;
+}
+
+.lb-payment-account-top,
+.lb-account-number-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lb-payment-account-top span {
+  color: #6b89a6;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lb-payment-account-top b {
+  color: #176eaa;
+  font-size: 12px;
+}
+
+.lb-payment-account > strong {
+  display: block;
+  margin-top: 6px;
+  color: #2a4b6d;
+  font-size: 13px;
+}
+
+.lb-account-number-row {
+  margin-top: 3px;
+}
+
+.lb-account-number-row > b {
+  color: #173f68;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: clamp(19px, 4vw, 24px);
+  letter-spacing: 0.5px;
+}
+
+.lb-payment-account button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border: 1px solid #b9d8ef;
+  border-radius: 7px;
+  background: #fff;
+  color: #2672a7;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.lb-payment-account button:hover,
+.lb-payment-account button:focus-visible {
+  border-color: #70acd5;
+  background: #eef8ff;
+  outline: none;
+}
+
+.lb-wallet-form-grid {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.72fr) minmax(0, 1.28fr);
+  gap: 11px;
+}
+
+.lb-withdraw-form-grid {
+  grid-template-columns: minmax(0, 1.2fr) minmax(140px, 0.8fr);
+}
+
+.lb-wallet-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.lb-wallet-form label > span {
+  color: #2b486d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lb-wallet-form label > small {
+  min-height: 14px;
+  color: #8a9bb0;
+  font-size: 10px;
+}
+
+.lb-wallet-form input,
+.lb-wallet-form textarea {
+  width: 100%;
+  border: 1px solid #cedae7;
+  border-radius: 9px;
+  background: #fff;
+  color: #1c385d;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.lb-wallet-form input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.lb-wallet-form textarea {
+  min-height: 88px;
+  padding: 10px 12px;
+  resize: vertical;
+}
+
+.lb-wallet-form input::placeholder,
+.lb-wallet-form textarea::placeholder {
+  color: #a5b1c0;
+}
+
+.lb-wallet-form input:focus,
+.lb-wallet-form textarea:focus {
+  border-color: #55a1d5;
+  box-shadow: 0 0 0 3px rgba(85, 161, 213, 0.13);
+}
+
+.lb-wallet-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 49px;
+  margin-top: 13px;
+  padding: 0 17px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #096db4, #075b9a);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 7px 14px rgba(8, 92, 154, 0.2);
+  transition: filter 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.lb-wallet-submit:hover,
+.lb-wallet-submit:focus-visible {
+  filter: brightness(1.08);
+  box-shadow: 0 9px 18px rgba(8, 92, 154, 0.27);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.lb-wallet-submit-withdraw {
+  background: linear-gradient(135deg, #c34b18, #a73b12);
+  box-shadow: 0 7px 14px rgba(167, 59, 18, 0.2);
+}
+
+.lb-wallet-submit-withdraw:hover,
+.lb-wallet-submit-withdraw:focus-visible {
+  box-shadow: 0 9px 18px rgba(167, 59, 18, 0.27);
+}
+
+.lb-wallet-available {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 11px 14px;
+  border-radius: 10px;
+  background: #eef2f7;
+  color: #71849d;
+  font-size: 12px;
+}
+
+.lb-wallet-available strong {
+  color: #24476d;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 15px;
+}
+
+.lb-wallet-feedback {
+  margin-top: 11px;
+  padding: 10px 12px;
+  border: 1px solid #acdcbf;
+  border-radius: 9px;
+  background: #edfff3;
+  color: #277145;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.lb-wallet-feedback.is-error {
+  border-color: #f0b3b8;
+  background: #fff1f2;
+  color: #a23540;
+}
+
+.lb-wallet-feedback[hidden] {
+  display: none;
 }
 
 .lb-wallet-note {
-  margin-top: 17px;
-  color: #8a99ac;
-  font-size: 12px;
-  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 15px;
+  color: #8192a7;
+  font-size: 11px;
+  line-height: 1.45;
   text-align: center;
+}
+
+@keyframes lb-wallet-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes lb-wallet-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes lb-wallet-content {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 /* Pick cards and live game screens */
@@ -1233,6 +1680,130 @@ button {
   text-align: center;
 }
 
+.lb-round-result {
+  position: relative;
+  display: grid;
+  gap: 3px;
+  min-height: 70px;
+  margin-top: 10px;
+  padding: 12px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 210, 74, 0.5);
+  border-radius: 15px;
+  background: linear-gradient(135deg, rgba(255, 210, 74, 0.18), rgba(19, 187, 130, 0.18));
+  color: var(--white);
+  text-align: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+}
+
+.lb-round-result::before,
+.lb-round-result::after {
+  position: absolute;
+  top: 50%;
+  width: 74px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--yellow), transparent);
+  content: "";
+  opacity: 0.8;
+}
+
+.lb-round-result::before {
+  left: -18px;
+  transform: rotate(25deg);
+}
+
+.lb-round-result::after {
+  right: -18px;
+  transform: rotate(-25deg);
+}
+
+.lb-round-result strong {
+  position: relative;
+  z-index: 1;
+  color: var(--yellow);
+  font-size: 24px;
+  letter-spacing: 1.8px;
+  animation: lb-win-pulse 1.2s ease-in-out infinite;
+}
+
+.lb-round-result > span:not(.lb-round-result-burst) {
+  position: relative;
+  z-index: 1;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lb-round-result-burst {
+  position: absolute;
+  inset: 5px auto auto 50%;
+  color: #fff6a8;
+  font-size: 22px;
+  transform: translateX(-50%);
+  animation: lb-result-sparkle 1.1s ease-in-out infinite;
+}
+
+.lb-round-result.is-lose {
+  border-color: rgba(255, 104, 116, 0.65);
+  background: linear-gradient(135deg, rgba(185, 32, 52, 0.3), rgba(88, 12, 29, 0.38));
+}
+
+.lb-round-result.is-lose strong {
+  color: #ff9ca5;
+  animation: none;
+}
+
+.lb-card.is-winner {
+  border-color: #ffe17a;
+  box-shadow: 0 0 0 2px rgba(255, 225, 122, 0.62), 0 0 24px rgba(255, 210, 74, 0.35);
+  animation: lb-winner-card 1.15s ease-in-out infinite alternate;
+}
+
+.lb-card.is-loser {
+  border-color: rgba(255, 85, 100, 0.78);
+  background: linear-gradient(180deg, rgba(123, 24, 38, 0.92), rgba(50, 12, 23, 0.96));
+  box-shadow: 0 0 0 1px rgba(255, 88, 102, 0.35), 0 7px 18px rgba(130, 17, 39, 0.28);
+}
+
+.lb-card.is-loser .lb-card-id,
+.lb-card.is-loser .lb-binghead span {
+  color: #ff9ca5;
+}
+
+.lb-card.is-loser .lb-cell {
+  background: rgba(60, 5, 18, 0.48);
+  color: #ffd4d8;
+}
+
+.lb-card.is-loser .lb-cell.is-hit {
+  background: linear-gradient(180deg, #ff8a96, #db334c);
+  color: #3c0712;
+}
+
+@keyframes lb-win-pulse {
+  0%, 100% { transform: scale(1); text-shadow: 0 0 0 transparent; }
+  50% { transform: scale(1.08); text-shadow: 0 0 18px rgba(255, 242, 41, 0.8); }
+}
+
+@keyframes lb-result-sparkle {
+  0%, 100% { opacity: 0.45; transform: translateX(-50%) scale(0.8) rotate(0deg); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.35) rotate(18deg); }
+}
+
+@keyframes lb-winner-card {
+  from { transform: translateY(0); }
+  to { transform: translateY(-3px); }
+}
+
+.lb-timer.is-urgent {
+  color: #ff9ca5;
+  animation: lb-timer-pulse 0.8s ease-in-out infinite alternate;
+}
+
+@keyframes lb-timer-pulse {
+  from { opacity: 0.72; }
+  to { opacity: 1; }
+}
+
 .lb-toast {
   position: absolute;
   top: 15%;
@@ -1305,7 +1876,13 @@ button {
     font-size: 16px;
   }
 
+  .lb-lobby-actions {
+    gap: 7px;
+  }
+
+  .lb-admin-link,
   .lb-refresh {
+    min-height: 42px;
     padding: 11px 12px 12px;
     font-size: 18px;
   }
@@ -1356,15 +1933,153 @@ button {
   }
 
   .lb-overlay {
-    padding: 12px;
+    align-items: start;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
   }
 
   .lb-wallet-panel {
-    padding: 20px 16px;
+    max-height: calc(100dvh - 24px);
+    padding: 21px 16px 19px;
+    border-radius: 20px;
   }
 
-  .lb-method-copy small {
-    white-space: normal;
+  .lb-wallet-panel h2 {
+    font-size: 29px;
+  }
+
+  .lb-wallet-subtitle {
+    font-size: 12px;
+  }
+
+  .lb-panel-close {
+    width: 40px;
+    height: 40px;
+    border-radius: 11px;
+    font-size: 29px;
+  }
+
+  .lb-wallet-summary {
+    margin-top: 19px;
+    padding: 14px;
+  }
+
+  .lb-summary-label {
+    font-size: 14px;
+  }
+
+  .lb-summary-hint {
+    font-size: 10px;
+  }
+
+  .lb-wallet-summary strong {
+    font-size: 22px;
+  }
+
+  .lb-wallet-summary strong em {
+    font-size: 12px;
+  }
+
+  .lb-wallet-tabs {
+    margin-top: 14px;
+  }
+
+  .lb-wallet-tabs button {
+    min-height: 44px;
+    font-size: 14px;
+  }
+
+  .lb-wallet-promo,
+  .lb-wallet-alert {
+    align-items: flex-start;
+    margin-top: 15px;
+    padding: 11px;
+  }
+
+  .lb-promo-badge {
+    display: none;
+  }
+
+  .lb-wallet-section-head {
+    margin-top: 17px;
+  }
+
+  .lb-provider-grid {
+    gap: 7px;
+  }
+
+  .lb-provider {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 7px;
+    padding: 8px;
+  }
+
+  .lb-provider-logo {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+
+  .lb-provider-copy strong {
+    font-size: 11px;
+  }
+
+  .lb-provider-copy small {
+    font-size: 9px;
+  }
+
+  .lb-provider-check {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 15px;
+    height: 15px;
+    font-size: 9px;
+  }
+
+  .lb-payment-account {
+    padding: 12px;
+  }
+
+  .lb-payment-account-top span {
+    font-size: 9px;
+  }
+
+  .lb-payment-account-top b {
+    font-size: 10px;
+  }
+
+  .lb-payment-account > strong {
+    font-size: 12px;
+  }
+
+  .lb-account-number-row > b {
+    font-size: 18px;
+  }
+
+  .lb-payment-account button {
+    padding: 6px 7px;
+    font-size: 10px;
+  }
+
+  .lb-wallet-form-grid,
+  .lb-withdraw-form-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .lb-wallet-form textarea {
+    min-height: 76px;
+  }
+
+  .lb-wallet-submit {
+    min-height: 46px;
+    margin-top: 11px;
+    font-size: 13px;
+  }
+
+  .lb-wallet-note {
+    font-size: 10px;
   }
 
   .lb-pick-statusbar {
@@ -1402,34 +2117,56 @@ button {
 
   .lb-pick-content {
     grid-template-columns: 1fr;
-    gap: 16px;
+    gap: 14px;
   }
 
   .lb-card-picker {
-    max-height: 330px;
+    min-height: 220px;
+    max-height: min(44dvh, 360px);
+    padding: 2px 1px 4px;
+    overscroll-behavior: contain;
   }
 
   .lb-pick-view .lb-card-grid {
-    grid-template-columns: repeat(10, minmax(25px, 1fr));
-    gap: 6px;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .lb-pick-view .lb-pick {
+    min-height: 42px;
+    aspect-ratio: 1.35;
+    font-size: 14px;
   }
 
   .lb-cartela-panel {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    column-gap: 12px;
-    align-items: start;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
 
   .lb-cartela-preview {
-    grid-row: span 4;
-    min-height: 242px;
-    padding: 12px;
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .lb-cartela-card {
+    width: min(100%, 420px);
+    margin: 0 auto;
+  }
+
+  .lb-cartela-head,
+  .lb-cartela-cells {
+    gap: 6px;
+  }
+
+  .lb-cartela-cell {
+    aspect-ratio: 1.3;
+    font-size: clamp(15px, 4.8vw, 22px);
   }
 
   .lb-random-label {
-    margin: 3px 0 8px;
-    font-size: 15px;
+    margin: 16px 0 8px;
+    font-size: 17px;
   }
 
   .lb-random-btn {
@@ -1475,6 +2212,60 @@ button {
 }
 
 @media (max-width: 390px) {
+  .lb-wallet-panel {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .lb-wallet-panel h2 {
+    font-size: 25px;
+  }
+
+  .lb-wallet-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lb-wallet-summary strong {
+    font-size: 21px;
+  }
+
+  .lb-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .lb-provider {
+    display: flex;
+    min-height: 49px;
+    padding: 7px 9px;
+  }
+
+  .lb-provider-check {
+    position: static;
+    width: 17px;
+    height: 17px;
+  }
+
+  .lb-provider-copy strong {
+    font-size: 12px;
+  }
+
+  .lb-provider-copy small {
+    font-size: 10px;
+  }
+
+  .lb-account-number-row {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .lb-payment-account button {
+    width: 100%;
+    justify-content: center;
+  }
+
   .lb-pick-view {
     padding-right: 8px;
     padding-left: 8px;
@@ -1485,12 +2276,31 @@ button {
   }
 
   .lb-pick-view .lb-card-grid {
-    gap: 4px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
   }
 
   .lb-pick-view .lb-pick {
-    border-radius: 6px;
-    font-size: 11px;
+    min-height: 40px;
+    border-radius: 7px;
+    font-size: 12px;
+  }
+
+  .lb-cartela-preview {
+    padding: 11px;
+  }
+
+  .lb-cartela-head,
+  .lb-cartela-cells {
+    gap: 4px;
+  }
+
+  .lb-cartela-head {
+    font-size: 14px;
+  }
+
+  .lb-cartela-cell {
+    font-size: 15px;
   }
 
   .lb-logo {

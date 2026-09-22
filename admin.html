@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f7fb" />
+    <title>Lucky Bingo — Admin Console</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="admin.css" />
+  </head>
+  <body class="admin-body">
+    <div class="admin-shell">
+      <aside class="admin-sidebar" id="admin-sidebar">
+        <div class="admin-brand">
+          <div class="admin-brand-mark" aria-hidden="true">LB</div>
+          <div>
+            <strong>Lucky Bingo</strong>
+            <span>Operator console</span>
+          </div>
+        </div>
+
+        <div class="admin-user-card">
+          <div class="admin-avatar admin-avatar-orange">AD</div>
+          <div class="admin-user-copy">
+            <strong>Admin desk</strong>
+            <span>Super administrator</span>
+          </div>
+          <span class="admin-online-dot" aria-label="Online"></span>
+        </div>
+
+        <nav class="admin-nav" aria-label="Admin navigation">
+          <span class="admin-nav-label">Workspace</span>
+          <a class="admin-nav-link is-active" href="#overview" data-section="overview">
+            <span class="admin-nav-icon" aria-hidden="true">⌂</span>
+            <span>Overview</span>
+          </a>
+          <a class="admin-nav-link" href="#live" data-section="live">
+            <span class="admin-nav-icon" aria-hidden="true">◉</span>
+            <span>Live bingo</span>
+            <em class="admin-nav-badge" id="nav-live-badge">3</em>
+          </a>
+          <a class="admin-nav-link" href="#transactions" data-section="transactions">
+            <span class="admin-nav-icon" aria-hidden="true">⇄</span>
+            <span>Transactions</span>
+            <em class="admin-nav-badge is-alert" id="nav-transaction-badge">8</em>
+          </a>
+          <a class="admin-nav-link" href="#players" data-section="players">
+            <span class="admin-nav-icon" aria-hidden="true">♙</span>
+            <span>Players</span>
+          </a>
+
+          <span class="admin-nav-label admin-nav-label-spaced">Insights</span>
+          <a class="admin-nav-link" href="#reports" data-section="reports">
+            <span class="admin-nav-icon" aria-hidden="true">▥</span>
+            <span>Reports</span>
+          </a>
+          <a class="admin-nav-link" href="#settings" data-section="settings">
+            <span class="admin-nav-icon" aria-hidden="true">⚙</span>
+            <span>Settings</span>
+          </a>
+        </nav>
+
+        <div class="admin-sidebar-footer">
+          <div class="admin-help-card">
+            <span class="admin-help-icon" aria-hidden="true">?</span>
+            <div>
+              <strong>Need a hand?</strong>
+              <span>Review the operator guide</span>
+            </div>
+            <button type="button" class="admin-icon-button admin-help-button" id="open-help" aria-label="Open help">›</button>
+          </div>
+          <a class="admin-back-link" href="index.html"><span aria-hidden="true">←</span> Back to player app</a>
+          <button type="button" class="admin-signout" id="admin-signout"><span aria-hidden="true">↪</span> Sign out</button>
+        </div>
+      </aside>
+
+      <main class="admin-main">
+        <header class="admin-topbar">
+          <button type="button" class="admin-menu-button" id="admin-menu-button" aria-label="Open navigation">☰</button>
+          <div class="admin-breadcrumbs">
+            <span>Lucky Bingo</span><span aria-hidden="true">/</span><strong id="current-section-label">Overview</strong>
+          </div>
+          <div class="admin-topbar-actions">
+            <div class="admin-system-status"><span class="admin-status-pulse"></span> All systems normal</div>
+            <button type="button" class="admin-icon-button admin-notification-button" id="notification-button" aria-label="View notifications">
+              <span aria-hidden="true">♢</span><em id="notification-count">5</em>
+            </button>
+            <div class="admin-top-avatar">AD</div>
+          </div>
+        </header>
+
+        <div class="admin-content">
+          <section class="admin-section is-active" id="admin-overview" data-page="overview">
+            <div class="admin-page-heading">
+              <div>
+                <span class="admin-kicker">MONDAY, SEPTEMBER 21, 2026</span>
+                <h1>Good afternoon, admin <span aria-hidden="true">👋</span></h1>
+                <p>Here is what is happening across Lucky Bingo right now.</p>
+              </div>
+              <div class="admin-heading-actions">
+                <span class="admin-last-updated" id="last-updated">Updated just now</span>
+                <button type="button" class="admin-button admin-button-primary" data-quick-action="new-round"><span aria-hidden="true">＋</span> New round</button>
+              </div>
+            </div>
+
+            <div class="admin-stat-grid">
+              <article class="admin-stat-card">
+                <div class="admin-stat-top"><span class="admin-stat-label">Total players</span><span class="admin-stat-icon admin-stat-icon-blue">♙</span></div>
+                <strong class="admin-stat-value" id="stat-players">1,284</strong>
+                <div class="admin-stat-foot"><span class="admin-trend is-up">↗ 12.8%</span><span>vs last month</span></div>
+              </article>
+              <article class="admin-stat-card">
+                <div class="admin-stat-top"><span class="admin-stat-label">Players online</span><span class="admin-stat-icon admin-stat-icon-green">●</span></div>
+                <strong class="admin-stat-value" id="stat-online">286</strong>
+                <div class="admin-stat-foot"><span class="admin-live-label"><i></i> Live now</span><span>across 3 rooms</span></div>
+              </article>
+              <article class="admin-stat-card">
+                <div class="admin-stat-top"><span class="admin-stat-label">Today’s revenue</span><span class="admin-stat-icon admin-stat-icon-orange">◈</span></div>
+                <strong class="admin-stat-value" id="stat-revenue">18,460 <small>ETB</small></strong>
+                <div class="admin-stat-foot"><span class="admin-trend is-up">↗ 8.4%</span><span>vs yesterday</span></div>
+              </article>
+              <article class="admin-stat-card admin-stat-card-alert">
+                <div class="admin-stat-top"><span class="admin-stat-label">Needs attention</span><span class="admin-stat-icon admin-stat-icon-red">!</span></div>
+                <strong class="admin-stat-value" id="stat-attention">8</strong>
+                <div class="admin-stat-foot"><span class="admin-trend is-alert">Action required</span><span>pending requests</span></div>
+              </article>
+            </div>
+
+            <div class="admin-dashboard-grid">
+              <article class="admin-panel admin-live-summary-panel">
+                <div class="admin-panel-heading">
+                  <div><span class="admin-panel-eyebrow">REAL-TIME</span><h2>Live bingo rooms</h2></div>
+                  <a class="admin-text-link" href="#live" data-section="live">Manage rooms <span aria-hidden="true">→</span></a>
+                </div>
+                <div class="admin-room-list" id="dashboard-rooms"></div>
+                <div class="admin-panel-footer"><span class="admin-live-label"><i></i> Live updates enabled</span><span id="dashboard-round-label">Round #LB-24091 in progress</span></div>
+              </article>
+
+              <article class="admin-panel admin-queue-panel">
+                <div class="admin-panel-heading">
+                  <div><span class="admin-panel-eyebrow">MONEY MOVEMENT</span><h2>Transaction queue</h2></div>
+                  <a class="admin-text-link" href="#transactions" data-section="transactions">View all <span aria-hidden="true">→</span></a>
+                </div>
+                <div class="admin-queue-total"><strong id="queue-total">8</strong><span>requests waiting for review</span><span class="admin-queue-clock" id="queue-age">oldest 18m</span></div>
+                <div class="admin-mini-transactions" id="dashboard-transactions"></div>
+                <button type="button" class="admin-button admin-button-soft admin-full-button" data-section="transactions">Open transaction desk</button>
+              </article>
+
+              <article class="admin-panel admin-activity-panel">
+                <div class="admin-panel-heading">
+                  <div><span class="admin-panel-eyebrow">AUDIT TRAIL</span><h2>Recent activity</h2></div>
+                  <button type="button" class="admin-more-button" id="clear-activity" title="Clear activity">•••</button>
+                </div>
+                <div class="admin-activity-list" id="activity-list"></div>
+              </article>
+
+              <article class="admin-panel admin-health-panel">
+                <div class="admin-panel-heading">
+                  <div><span class="admin-panel-eyebrow">PLAYER HEALTH</span><h2>Player snapshot</h2></div>
+                  <a class="admin-text-link" href="#players" data-section="players">Open players <span aria-hidden="true">→</span></a>
+                </div>
+                <div class="admin-health-body">
+                  <div class="admin-donut" id="player-donut"><span><strong id="active-percent">92</strong><small>active</small></span></div>
+                  <div class="admin-health-legend">
+                    <div><i class="legend-active"></i><span>Active players</span><strong id="active-count">1,181</strong></div>
+                    <div><i class="legend-idle"></i><span>Idle this week</span><strong id="idle-count">86</strong></div>
+                    <div><i class="legend-blocked"></i><span>Blocked</span><strong id="blocked-count">17</strong></div>
+                  </div>
+                </div>
+                <div class="admin-health-note"><span aria-hidden="true">✦</span> Player activity is up <b>6.2%</b> this week.</div>
+              </article>
+            </div>
+          </section>
+
+          <section class="admin-section" id="admin-live" data-page="live">
+            <div class="admin-page-heading">
+              <div><span class="admin-kicker">BINGO OPERATIONS</span><h1>Live bingo control</h1><p>Monitor every room, call numbers, and keep rounds moving.</p></div>
+              <div class="admin-heading-actions"><span class="admin-live-label admin-live-label-large"><i></i> Live control connected</span><button type="button" class="admin-button admin-button-primary" data-live-action="new-round"><span aria-hidden="true">＋</span> Start new round</button></div>
+            </div>
+            <div class="admin-live-toolbar">
+              <div class="admin-room-tabs" id="live-room-tabs"></div>
+              <div class="admin-live-toolbar-right"><span class="admin-small-muted">Auto-call interval</span><select class="admin-select admin-select-small" id="call-interval"><option value="5">5 sec</option><option value="8" selected>8 sec</option><option value="12">12 sec</option></select><button type="button" class="admin-button admin-button-soft" data-live-action="refresh"><span aria-hidden="true">↻</span> Refresh</button></div>
+            </div>
+            <div class="admin-live-control-grid">
+              <article class="admin-panel admin-round-panel">
+                <div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">ROOM CONTROL</span><h2 id="live-room-title">20 ETB room</h2></div><span class="admin-round-state is-live" id="live-round-state"><i></i> LIVE</span></div>
+                <div class="admin-round-number"><div class="admin-call-label">LAST NUMBER CALLED</div><strong id="live-call-ball">G-47</strong><span><b id="live-call-count">22</b> of 75 numbers</span></div>
+                <div class="admin-round-progress"><div id="live-round-progress" style="width: 29%"></div></div>
+                <div class="admin-round-meta"><span>Round <b id="live-round-id">#LB-24091</b></span><span>Prize pool <b id="live-prize-pool">3,240 ETB</b></span></div>
+                <div class="admin-round-actions"><button type="button" class="admin-button admin-button-primary" data-live-action="toggle-round" id="toggle-round-button">Pause round</button><button type="button" class="admin-button admin-button-outline" data-live-action="next-call"><span aria-hidden="true">↗</span> Call next</button><button type="button" class="admin-button admin-button-danger-outline" data-live-action="end-round">End round</button></div>
+                <div class="admin-control-warning"><span aria-hidden="true">!</span><span>Ending a round cannot be undone. Confirmations are required for payouts.</span></div>
+              </article>
+              <article class="admin-panel admin-room-health-panel">
+                <div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">ROOM HEALTH</span><h2>At a glance</h2></div><span class="admin-chip admin-chip-green">Healthy</span></div>
+                <div class="admin-health-metrics"><div><strong id="live-player-count">106</strong><span>players joined</span></div><div><strong id="live-card-count">106</strong><span>cards in play</span></div><div><strong id="live-callers">4</strong><span>possible winners</span></div><div><strong id="live-average-call">01:42</strong><span>avg. call time</span></div></div>
+                <div class="admin-room-progress-list"><div><span>Room capacity</span><b>71%</b><div><i style="width:71%"></i></div></div><div><span>Connection quality</span><b>98%</b><div><i class="is-blue" style="width:98%"></i></div></div></div>
+              </article>
+              <article class="admin-panel admin-call-history-panel">
+                <div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">CALL HISTORY</span><h2>Numbers called</h2></div><button type="button" class="admin-more-button" data-live-action="clear-history">Clear</button></div>
+                <div class="admin-call-history" id="live-call-history"></div>
+                <p class="admin-empty-note" id="call-history-note">Most recent calls appear here.</p>
+              </article>
+              <article class="admin-panel admin-room-management-panel">
+                <div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">ROOMS</span><h2>Room availability</h2></div><span class="admin-small-muted">Player lobby view</span></div>
+                <div class="admin-management-list" id="live-room-management"></div>
+              </article>
+            </div>
+          </section>
+
+          <section class="admin-section" id="admin-transactions" data-page="transactions">
+            <div class="admin-page-heading">
+              <div><span class="admin-kicker">FINANCE DESK</span><h1>Deposits &amp; withdrawals</h1><p>Review requests, verify payment details, and keep player balances accurate.</p></div>
+              <div class="admin-heading-actions"><button type="button" class="admin-button admin-button-soft" id="export-transactions"><span aria-hidden="true">↓</span> Export CSV</button><button type="button" class="admin-button admin-button-primary" id="refresh-transactions"><span aria-hidden="true">↻</span> Refresh</button></div>
+            </div>
+            <div class="admin-finance-summary"><div><span>Pending deposits</span><strong id="finance-deposits">5,800 <small>ETB</small></strong><em id="finance-deposit-count">5 requests</em></div><div><span>Pending withdrawals</span><strong id="finance-withdrawals">2,450 <small>ETB</small></strong><em id="finance-withdrawal-count">3 requests</em></div><div><span>Processed today</span><strong id="finance-processed">18,460 <small>ETB</small></strong><em class="is-positive">+8.4% from yesterday</em></div><div><span>Average review time</span><strong>06:24</strong><em class="is-positive">Within target</em></div></div>
+            <article class="admin-panel admin-table-panel">
+              <div class="admin-table-toolbar"><div class="admin-filter-tabs" role="tablist" aria-label="Transaction filter"><button type="button" class="is-active" data-transaction-filter="all">All <b id="filter-all-count">8</b></button><button type="button" data-transaction-filter="deposit">Deposits <b id="filter-deposit-count">5</b></button><button type="button" data-transaction-filter="withdraw">Withdrawals <b id="filter-withdraw-count">3</b></button><button type="button" data-transaction-filter="processed">Processed</button></div><div class="admin-table-tools"><label class="admin-inline-search"><span aria-hidden="true">⌕</span><input type="search" id="transaction-search" placeholder="Search transactions" /></label><select class="admin-select" id="transaction-status-filter"><option value="all">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div></div>
+              <div class="admin-table-scroll"><table class="admin-table"><thead><tr><th>Player</th><th>Type</th><th>Method</th><th>Amount</th><th>Requested</th><th>Status</th><th><span class="admin-sr-only">Actions</span></th></tr></thead><tbody id="transactions-table"></tbody></table></div>
+              <div class="admin-table-footer"><span id="transaction-result-count">Showing 8 requests</span><div class="admin-pagination"><button type="button" disabled aria-label="Previous page">‹</button><button type="button" class="is-current">1</button><button type="button">2</button><button type="button" aria-label="Next page">›</button></div></div>
+            </article>
+          </section>
+
+          <section class="admin-section" id="admin-players" data-page="players">
+            <div class="admin-page-heading">
+              <div><span class="admin-kicker">PLAYER DIRECTORY</span><h1>Players</h1><p>Search accounts, manage access, and keep player profiles up to date.</p></div>
+              <div class="admin-heading-actions"><button type="button" class="admin-button admin-button-soft" id="export-players"><span aria-hidden="true">↓</span> Export list</button><button type="button" class="admin-button admin-button-primary" data-player-action="add"><span aria-hidden="true">＋</span> Add player</button></div>
+            </div>
+            <div class="admin-player-insights"><div><span class="admin-insight-icon admin-insight-blue">♙</span><span><b id="player-total-count">1,284</b><small>Total accounts</small></span></div><div><span class="admin-insight-icon admin-insight-green">✓</span><span><b id="player-verified-count">1,198</b><small>Verified accounts</small></span></div><div><span class="admin-insight-icon admin-insight-orange">◌</span><span><b id="player-new-count">38</b><small>New this month</small></span></div><div><span class="admin-insight-icon admin-insight-red">!</span><span><b id="player-blocked-count">17</b><small>Blocked accounts</small></span></div></div>
+            <article class="admin-panel admin-table-panel">
+              <div class="admin-table-toolbar"><label class="admin-player-search"><span aria-hidden="true">⌕</span><input type="search" id="player-search" placeholder="Search by name, email, phone or player ID" /><kbd>⌘ K</kbd></label><div class="admin-table-tools"><select class="admin-select" id="player-status-filter"><option value="all">All statuses</option><option value="active">Active</option><option value="idle">Idle</option><option value="blocked">Blocked</option></select><button type="button" class="admin-filter-button" id="player-filter-button"><span aria-hidden="true">☷</span> Filters</button></div></div>
+              <div class="admin-table-scroll"><table class="admin-table admin-player-table"><thead><tr><th>Player</th><th>Contact</th><th>Wallet balance</th><th>Games</th><th>Last active</th><th>Status</th><th><span class="admin-sr-only">Actions</span></th></tr></thead><tbody id="players-table"></tbody></table></div>
+              <div class="admin-table-footer"><span id="player-result-count">Showing 8 players</span><div class="admin-pagination"><button type="button" disabled>‹</button><button type="button" class="is-current">1</button><button type="button">2</button><button type="button">3</button><button type="button">›</button></div></div>
+            </article>
+          </section>
+
+          <section class="admin-section" id="admin-reports" data-page="reports">
+            <div class="admin-page-heading"><div><span class="admin-kicker">INSIGHTS</span><h1>Reports</h1><p>Understand performance, player behavior, and the health of your bingo operation.</p></div><div class="admin-heading-actions"><select class="admin-select" id="report-range"><option>Last 7 days</option><option>Last 30 days</option><option>This year</option></select><button type="button" class="admin-button admin-button-soft" id="export-report"><span aria-hidden="true">↓</span> Export report</button></div></div>
+            <div class="admin-report-grid"><article class="admin-panel admin-chart-panel admin-chart-wide"><div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">REVENUE TREND</span><h2>Net revenue</h2></div><strong class="admin-chart-total">18,460 <small>ETB</small></strong></div><div class="admin-chart-legend"><span><i class="chart-line chart-line-blue"></i> Revenue</span><span><i class="chart-line chart-line-orange"></i> Payouts</span></div><div class="admin-chart" aria-label="Revenue chart"><div class="admin-chart-y"><span>20k</span><span>15k</span><span>10k</span><span>5k</span><span>0</span></div><div class="admin-chart-area"><div class="admin-chart-gridlines"><i></i><i></i><i></i><i></i><i></i></div><svg viewBox="0 0 720 220" preserveAspectRatio="none" role="img" aria-label="Revenue and payout trend"><defs><linearGradient id="revenue-fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#2f80ed" stop-opacity=".24"/><stop offset="1" stop-color="#2f80ed" stop-opacity="0"/></linearGradient></defs><path class="chart-fill" d="M0 172 C42 162 58 155 92 158 S144 134 178 145 S230 121 268 130 S320 91 360 112 S416 82 452 96 S496 48 540 72 S600 38 636 55 S682 31 720 42 L720 220 L0 220 Z"/><path class="chart-path chart-path-blue" d="M0 172 C42 162 58 155 92 158 S144 134 178 145 S230 121 268 130 S320 91 360 112 S416 82 452 96 S496 48 540 72 S600 38 636 55 S682 31 720 42"/><path class="chart-path chart-path-orange" d="M0 190 C42 181 58 176 92 178 S144 161 178 170 S230 144 268 154 S320 119 360 140 S416 106 452 125 S496 79 540 102 S600 65 636 83 S682 61 720 70"/></svg><div class="admin-chart-x"><span>15 Sep</span><span>17 Sep</span><span>19 Sep</span><span>21 Sep</span></div></div></div></article><article class="admin-panel admin-chart-panel"><div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">ROOM PERFORMANCE</span><h2>Top rooms</h2></div><button type="button" class="admin-more-button">•••</button></div><div class="admin-bar-list"><div><span><b>10 ETB room</b><small>2,180 rounds</small></span><strong>42%</strong><i><em style="width:42%"></em></i></div><div><span><b>20 ETB room</b><small>1,640 rounds</small></span><strong>34%</strong><i><em style="width:34%"></em></i></div><div><span><b>50 ETB room</b><small>812 rounds</small></span><strong>24%</strong><i><em style="width:24%"></em></i></div></div><div class="admin-report-callout"><span aria-hidden="true">✦</span><span>The <b>10 ETB room</b> brings the most first-time players.</span></div></article><article class="admin-panel admin-chart-panel"><div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">PLAYER RETENTION</span><h2>Weekly return rate</h2></div><span class="admin-chip admin-chip-green">+4.8%</span></div><div class="admin-retention-score"><strong>68.4<small>%</small></strong><span>players returned this week</span></div><div class="admin-retention-bars"><i style="height:43%"></i><i style="height:58%"></i><i style="height:51%"></i><i style="height:70%"></i><i style="height:64%"></i><i style="height:83%"></i><i style="height:92%"></i></div><div class="admin-chart-x admin-chart-x-even"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div></article></div>
+          </section>
+
+          <section class="admin-section" id="admin-settings" data-page="settings">
+            <div class="admin-page-heading"><div><span class="admin-kicker">CONTROL CENTER</span><h1>Settings</h1><p>Set safe defaults for your operation. Changes are saved in this browser.</p></div><span class="admin-saved-label" id="settings-saved">All changes saved</span></div>
+            <div class="admin-settings-grid"><article class="admin-panel admin-settings-panel"><div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">GAME DEFAULTS</span><h2>Round settings</h2></div></div><label class="admin-setting-row"><span><b>Commission rate</b><small>Percentage held from every prize pool</small></span><span class="admin-input-suffix"><input type="number" id="setting-commission" min="0" max="50" step="1" value="20" /><em>%</em></span></label><label class="admin-setting-row"><span><b>Auto-start threshold</b><small>Players required before a room starts</small></span><span class="admin-input-suffix"><input type="number" id="setting-threshold" min="2" max="500" step="1" value="10" /><em>players</em></span></label><label class="admin-setting-row"><span><b>Card-selection countdown</b><small>Players have this long to enter cards before the round starts</small></span><span class="admin-input-suffix"><input type="number" id="setting-countdown" min="10" max="600" step="5" value="60" /><em>seconds</em></span></label><label class="admin-setting-row"><span><b>Auto-call numbers</b><small>Allow rooms to call numbers automatically</small></span><input type="checkbox" class="admin-switch" id="setting-autocall" checked /></label><label class="admin-setting-row"><span><b>Maintenance mode</b><small>Temporarily prevent new games from starting</small></span><input type="checkbox" class="admin-switch is-danger" id="setting-maintenance" /></label></article><article class="admin-panel admin-settings-panel"><div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">SECURITY &amp; ALERTS</span><h2>Admin preferences</h2></div></div><label class="admin-setting-row"><span><b>Transaction alerts</b><small>Notify this desk about new finance requests</small></span><input type="checkbox" class="admin-switch" id="setting-transactions" checked /></label><label class="admin-setting-row"><span><b>Large withdrawal review</b><small>Require a second review above 5,000 ETB</small></span><input type="checkbox" class="admin-switch" id="setting-large-withdrawal" checked /></label><label class="admin-setting-row"><span><b>Session timeout</b><small>Sign out after inactivity</small></span><select class="admin-select admin-select-small" id="setting-timeout"><option value="30">30 minutes</option><option value="60" selected>1 hour</option><option value="240">4 hours</option></select></label><div class="admin-security-note"><span aria-hidden="true">✓</span><div><b>Two-step verification is active</b><small>Your admin account is protected with an extra sign-in step.</small></div></div></article></div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div class="admin-toast" id="admin-toast" hidden></div>
+
+    <div class="admin-modal-backdrop" id="player-modal" hidden>
+      <section class="admin-modal" role="dialog" aria-modal="true" aria-labelledby="player-modal-title">
+        <div class="admin-modal-heading"><div><span class="admin-panel-eyebrow">PLAYER ACCOUNT</span><h2 id="player-modal-title">Edit player</h2></div><button type="button" class="admin-modal-close" data-close-modal="player-modal" aria-label="Close">×</button></div>
+        <form id="player-form"><input type="hidden" id="player-form-id" /><div class="admin-form-grid"><label><span>Full name</span><input type="text" id="player-form-name" required /></label><label><span>Player ID</span><input type="text" id="player-form-username" disabled /></label><label><span>Email address</span><input type="email" id="player-form-email" required /></label><label><span>Phone number</span><input type="tel" id="player-form-phone" required /></label><label><span>Wallet balance (ETB)</span><input type="number" id="player-form-balance" min="0" step="1" required /></label><label><span>Account status</span><select id="player-form-status"><option value="active">Active</option><option value="idle">Idle</option><option value="blocked">Blocked</option></select></label></div><label class="admin-form-wide"><span>Admin note</span><textarea id="player-form-note" rows="3" placeholder="Optional internal note about this account"></textarea></label><div class="admin-modal-actions"><button type="button" class="admin-button admin-button-soft" data-close-modal="player-modal">Cancel</button><button type="submit" class="admin-button admin-button-primary">Save player</button></div></form>
+      </section>
+    </div>
+
+    <div class="admin-modal-backdrop" id="password-modal" hidden>
+      <section class="admin-modal admin-modal-small" role="dialog" aria-modal="true" aria-labelledby="password-modal-title">
+        <div class="admin-modal-heading"><div><span class="admin-panel-eyebrow">SECURITY ACTION</span><h2 id="password-modal-title">Change password</h2></div><button type="button" class="admin-modal-close" data-close-modal="password-modal" aria-label="Close">×</button></div>
+        <p class="admin-modal-copy">Set a temporary password for <b id="password-player-name">this player</b>. The player will be asked to change it after signing in.</p>
+        <form id="password-form"><input type="hidden" id="password-form-id" /><label class="admin-form-wide"><span>Temporary password</span><input type="password" id="password-form-value" minlength="6" required placeholder="At least 6 characters" /></label><label class="admin-check-row"><input type="checkbox" id="password-notify" checked /><span>Notify the player about the password reset</span></label><div class="admin-modal-actions"><button type="button" class="admin-button admin-button-soft" data-close-modal="password-modal">Cancel</button><button type="submit" class="admin-button admin-button-primary">Set password</button></div></form>
+      </section>
+    </div>
+
+    <div class="admin-modal-backdrop" id="help-modal" hidden>
+      <section class="admin-modal admin-modal-small" role="dialog" aria-modal="true" aria-labelledby="help-modal-title"><div class="admin-modal-heading"><div><span class="admin-panel-eyebrow">OPERATOR GUIDE</span><h2 id="help-modal-title">A safe admin workflow</h2></div><button type="button" class="admin-modal-close" data-close-modal="help-modal" aria-label="Close">×</button></div><div class="admin-guide-list"><div><b>1</b><span>Review deposit and withdrawal requests before approving a balance change.</span></div><div><b>2</b><span>Use the live room controls to pause a room if a payment or connection issue appears.</span></div><div><b>3</b><span>Block suspicious accounts and record the reason in the player note.</span></div><div><b>4</b><span>Export finance reports regularly for reconciliation.</span></div></div><div class="admin-modal-actions"><button type="button" class="admin-button admin-button-primary" data-close-modal="help-modal">Got it</button></div></section>
+    </div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>

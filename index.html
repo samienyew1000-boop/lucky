@@ -34,7 +34,10 @@
                 </span>
                 <span class="lb-balance-arrow" aria-hidden="true">›</span>
               </button>
-              <button type="button" class="lb-refresh" id="refresh-rooms">Refresh</button>
+              <div class="lb-lobby-actions">
+                <a class="lb-admin-link" href="admin.html" aria-label="Open admin console">Admin</a>
+                <button type="button" class="lb-refresh" id="refresh-rooms">Refresh</button>
+              </div>
             </div>
 
             <section class="lb-room-list" aria-labelledby="rooms-heading">
@@ -89,7 +92,7 @@
               </aside>
             </div>
 
-            <div class="lb-timer" id="pick-timer">Selecting cards… <span id="pick-secs">20</span>s</div>
+            <div class="lb-timer" id="pick-timer">Round begins in <span id="pick-secs">01:00</span></div>
             <div class="lb-pick-info lb-pick-info-bottom">
               <span>Pool <b id="pick-pool">0</b> ETB</span>
               <span>Each selected cartela costs <b id="pick-cost">10</b> ETB</span>
@@ -120,69 +123,132 @@
               <button type="button" class="lb-leave" id="leave-game">LEAVE</button>
             </div>
             <div class="lb-status" id="game-status">Waiting for first call…</div>
+            <div class="lb-round-result" id="round-result" role="status" aria-live="assertive" hidden></div>
           </section>
         </main>
 
-        <!-- WALLET: deposit and withdrawal methods -->
+        <!-- WALLET: provider instructions and request forms -->
         <div class="lb-overlay" id="wallet-panel" hidden>
           <section class="lb-wallet-panel" role="dialog" aria-modal="true" aria-labelledby="wallet-title">
             <div class="lb-wallet-panel-head">
               <div>
-                <div class="lb-eyebrow">WALLET</div>
+                <div class="lb-eyebrow">LUCKY BINGO WALLET</div>
                 <h2 id="wallet-title">Deposit &amp; withdraw</h2>
+                <p class="lb-wallet-subtitle">Manage your balance with a secure manual request.</p>
               </div>
               <button type="button" class="lb-panel-close" id="close-wallet" aria-label="Close wallet">×</button>
             </div>
 
             <div class="lb-wallet-summary">
-              <span>Available balance</span>
-              <strong><span id="panel-balance">5</span> ETB</strong>
+              <div>
+                <span class="lb-summary-label">Available balance</span>
+                <span class="lb-summary-hint">Your balance is updated after verification.</span>
+              </div>
+              <strong><span id="panel-balance">5</span><em>ETB</em></strong>
             </div>
 
             <div class="lb-wallet-tabs" role="tablist" aria-label="Wallet actions">
-              <button type="button" class="is-active" id="wallet-deposit-tab" data-wallet-tab="deposit" role="tab" aria-selected="true">Deposit</button>
-              <button type="button" id="wallet-withdraw-tab" data-wallet-tab="withdraw" role="tab" aria-selected="false">Withdraw</button>
+              <button type="button" class="is-active" id="wallet-deposit-tab" data-wallet-tab="deposit" role="tab" aria-controls="wallet-deposit-view" aria-selected="true">Deposit</button>
+              <button type="button" id="wallet-withdraw-tab" data-wallet-tab="withdraw" role="tab" aria-controls="wallet-withdraw-view" aria-selected="false">Withdraw</button>
             </div>
 
             <div class="lb-wallet-view is-active" id="wallet-deposit-view" data-wallet-view="deposit">
-              <p class="lb-wallet-intro">Choose a deposit method to add money to your Lucky Bingo balance.</p>
-              <div class="lb-methods">
-                <button type="button" class="lb-method" data-wallet-action="deposit" data-method="Mobile money">
-                  <span class="lb-method-icon">↗</span>
-                  <span class="lb-method-copy"><strong>Mobile money</strong><small>Use your preferred mobile-money provider</small></span>
-                  <span class="lb-method-arrow">›</span>
+              <div class="lb-wallet-promo">
+                <span class="lb-promo-icon" aria-hidden="true">🎁</span>
+                <div><strong>20% deposit bonus</strong><span>Get a bonus when you deposit 100 ETB or more.</span></div>
+                <span class="lb-promo-badge">100+ ETB</span>
+              </div>
+
+              <div class="lb-wallet-section-head">
+                <span class="lb-step-index">1</span>
+                <div><strong>Choose deposit method</strong><small>Select the service where you sent the payment.</small></div>
+              </div>
+              <div class="lb-provider-grid" id="deposit-providers" aria-label="Deposit methods">
+                <button type="button" class="lb-provider is-selected" data-provider-action="deposit" data-method="Telebirr" aria-pressed="true">
+                  <span class="lb-provider-logo"><img src="assets/telebirr.png" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>Telebirr</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
                 </button>
-                <button type="button" class="lb-method" data-wallet-action="deposit" data-method="Bank transfer">
-                  <span class="lb-method-icon">▣</span>
-                  <span class="lb-method-copy"><strong>Bank transfer</strong><small>Deposit directly from your bank account</small></span>
-                  <span class="lb-method-arrow">›</span>
+                <button type="button" class="lb-provider" data-provider-action="deposit" data-method="CBE Birr" aria-pressed="false">
+                  <span class="lb-provider-logo"><img src="assets/cbebirr.png" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>CBE Birr</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
+                </button>
+                <button type="button" class="lb-provider" data-provider-action="deposit" data-method="M-Pesa" aria-pressed="false">
+                  <span class="lb-provider-logo"><img src="assets/m-pesa.jpg" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>M-Pesa</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
                 </button>
               </div>
+
+              <div class="lb-payment-account" id="deposit-account-card">
+                <div class="lb-payment-account-top"><span>Send payment to</span><b id="deposit-selected-method">Telebirr</b></div>
+                <strong id="deposit-account-name">Lucky Bingo</strong>
+                <div class="lb-account-number-row"><b id="deposit-account-number">0911 000 000</b><button type="button" id="copy-deposit-account"><span aria-hidden="true">▣</span> Copy number</button></div>
+              </div>
+
+              <div class="lb-wallet-section-head">
+                <span class="lb-step-index">2</span>
+                <div><strong>Enter deposit details</strong><small>We use these details to verify your payment.</small></div>
+              </div>
+              <form class="lb-wallet-form" id="deposit-form">
+                <div class="lb-wallet-form-grid">
+                  <label><span>Amount</span><small>Minimum 50 ETB</small><input id="deposit-amount" name="amount" type="number" min="50" step="1" inputmode="numeric" placeholder="Enter amount" required /></label>
+                  <label class="lb-reference-field"><span>Transaction reference / SMS message</span><small>Paste the confirmation text from your provider</small><textarea id="deposit-reference" name="reference" rows="3" placeholder="Paste the SMS or transaction reference here" required></textarea></label>
+                </div>
+                <button class="lb-wallet-submit" type="submit"><span>Submit deposit request</span><span aria-hidden="true">→</span></button>
+              </form>
+              <div class="lb-wallet-feedback" id="deposit-feedback" role="status" hidden></div>
+              <p class="lb-wallet-note"><span aria-hidden="true">ⓘ</span> Your request is sent to the admin desk for verification. Your balance changes after approval.</p>
             </div>
 
             <div class="lb-wallet-view" id="wallet-withdraw-view" data-wallet-view="withdraw" hidden>
-              <p class="lb-wallet-intro">Choose where you want your Lucky Bingo winnings sent.</p>
-              <div class="lb-methods">
-                <button type="button" class="lb-method" data-wallet-action="withdraw" data-method="Mobile money">
-                  <span class="lb-method-icon">↙</span>
-                  <span class="lb-method-copy"><strong>Mobile money</strong><small>Withdraw to your registered mobile-money account</small></span>
-                  <span class="lb-method-arrow">›</span>
+              <div class="lb-wallet-alert"><span class="lb-alert-icon" aria-hidden="true">!</span><div><strong>Withdrawals are reviewed manually.</strong><span>Use the phone number registered to your Lucky Bingo account.</span></div></div>
+
+              <div class="lb-wallet-section-head">
+                <span class="lb-step-index">1</span>
+                <div><strong>Choose withdrawal method</strong><small>Select where you want to receive your funds.</small></div>
+              </div>
+              <div class="lb-provider-grid" id="withdraw-providers" aria-label="Withdrawal methods">
+                <button type="button" class="lb-provider is-selected" data-provider-action="withdraw" data-method="Telebirr" aria-pressed="true">
+                  <span class="lb-provider-logo"><img src="assets/telebirr.png" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>Telebirr</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
                 </button>
-                <button type="button" class="lb-method" data-wallet-action="withdraw" data-method="Bank account">
-                  <span class="lb-method-icon">▣</span>
-                  <span class="lb-method-copy"><strong>Bank account</strong><small>Withdraw to your linked bank account</small></span>
-                  <span class="lb-method-arrow">›</span>
+                <button type="button" class="lb-provider" data-provider-action="withdraw" data-method="CBE Birr" aria-pressed="false">
+                  <span class="lb-provider-logo"><img src="assets/cbebirr.png" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>CBE Birr</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
+                </button>
+                <button type="button" class="lb-provider" data-provider-action="withdraw" data-method="M-Pesa" aria-pressed="false">
+                  <span class="lb-provider-logo"><img src="assets/m-pesa.jpg" alt="" /></span>
+                  <span class="lb-provider-copy"><strong>M-Pesa</strong><small>Mobile money</small></span>
+                  <span class="lb-provider-check" aria-hidden="true">✓</span>
                 </button>
               </div>
-            </div>
 
-            <p class="lb-wallet-note">Payment details will appear here when the wallet methods are connected.</p>
+              <div class="lb-wallet-available"><span>Available to withdraw</span><strong><span id="withdraw-available">5</span> ETB</strong></div>
+              <div class="lb-wallet-section-head">
+                <span class="lb-step-index">2</span>
+                <div><strong>Enter withdrawal details</strong><small>Requests are paid after admin approval.</small></div>
+              </div>
+              <form class="lb-wallet-form" id="withdraw-form">
+                <div class="lb-wallet-form-grid lb-withdraw-form-grid">
+                  <label><span>Registered phone number</span><small>Use the number linked to your account</small><input id="withdraw-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="e.g. 0911 000 000" required /></label>
+                  <label><span>Amount</span><small>Minimum 50 ETB</small><input id="withdraw-amount" name="amount" type="number" min="50" step="1" inputmode="numeric" placeholder="Enter amount" required /></label>
+                </div>
+                <button class="lb-wallet-submit lb-wallet-submit-withdraw" type="submit"><span>Submit withdrawal request</span><span aria-hidden="true">→</span></button>
+              </form>
+              <div class="lb-wallet-feedback" id="withdraw-feedback" role="status" hidden></div>
+              <p class="lb-wallet-note"><span aria-hidden="true">ⓘ</span> Withdrawals are sent to your registered number after the admin approves the request.</p>
+            </div>
           </section>
         </div>
 
         <div class="lb-toast" id="toast" hidden></div>
       </div>
     </div>
-    <script src="game.js"></script>
+    <script src="card-data.js?v=2"></script>
+    <script src="game.js?v=2"></script>
   </body>
 </html>

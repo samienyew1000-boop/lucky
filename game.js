@@ -1,13 +1,24 @@
 "use strict";
 
 const BALANCE_KEY = "lucky-bingo-balance";
+const ADMIN_STATE_KEY = "lucky-bingo-admin-state-v1";
+const ADMIN_SETTINGS_KEY = "lucky-bingo-admin-settings-v1";
+const CARD_DATA_URL = "card%20number.json";
 const START_BALANCE = 5;
-const CARD_COUNT = 100;
+const CARD_COUNT = 1000;
 const MAX_PICK = 4;
 const CALL_MS = 1600;
-const PICK_SECS = 22;
+const DEFAULT_PICK_SECS = 60;
 const ROOM_UPDATE_MS = 2400;
 const COMMISSION_RATE = 0.2;
+const MIN_WALLET_AMOUNT = 50;
+const PLAYER_ID = "LB-PLAYER";
+const PLAYER_NAME = "Lucky Bingo Player";
+const PAYMENT_METHODS = Object.freeze({
+  Telebirr: { accountName: "Lucky Bingo", accountNumber: "0911 000 000" },
+  "CBE Birr": { accountName: "Lucky Bingo CBE Birr", accountNumber: "1000 000 000" },
+  "M-Pesa": { accountName: "Lucky Bingo M-Pesa", accountNumber: "0700 000 000" },
+});
 
 const ROOMS = [
   { stake: 10, players: 98, active: "Low balance" },
@@ -37,19 +48,44 @@ let selected = new Set();
 let selectedPreviewId = null;
 let takenByOthers = new Set();
 let cardDefs = {};
+let cardNumbers = [];
+let cardsReady = false;
+let cardsLoadError = false;
 let called = [];
 let callPool = [];
 let callTimer = null;
 let pickTimer = null;
 let roomTimer = null;
-let pickLeft = PICK_SECS;
+let pickLeft = DEFAULT_PICK_SECS;
 let playing = false;
 let claimed = false;
 let botPlayers = 0;
+let roundOutcome = null;
+let roundWinnerName = "";
+let roundWinKind = "";
+let roundWinCardId = null;
+let walletState = { deposit: "Telebirr", withdraw: "Telebirr" };
 
 function loadNum(key, fallback, minimum = 1) {
   const n = Number(localStorage.getItem(key));
   return Number.isFinite(n) && n >= minimum ? n : fallback;
+}
+
+function getPickCountdownSeconds() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_SETTINGS_KEY) || "null");
+    const seconds = Number(saved?.countdown);
+    return Number.isFinite(seconds) ? Math.min(600, Math.max(10, Math.round(seconds))) : DEFAULT_PICK_SECS;
+  } catch (error) {
+    return DEFAULT_PICK_SECS;
+  }
+}
+
+function formatCountdown(seconds) {
+  const safeSeconds = Math.max(0, Math.ceil(Number(seconds) || 0));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainder = safeSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 }
 
 function saveBalance() {
@@ -99,30 +135,70 @@ function toast(text, kind) {
 }
 
 function renderBalance() {
-  $("balance").textContent = fmtBal(balance);
-  $("panel-balance").textContent = fmtBal(balance);
+  const lobbyBalance = $("balance");
+  const pickBalance = $("pick-balance");
+  if (lobbyBalance) lobbyBalance.textContent = fmtBal(balance);
+  if (pickBalance) pickBalance.textContent = fmtBal(balance);
+  updateWalletBalances();
   renderRooms();
 }
 
-function makeCard(seed) {
-  const cols = COL_RANGES.map(([lo, hi]) => {
-    const nums = [];
-    for (let n = lo; n <= hi; n++) nums.push(n);
-    return shuffle(nums).slice(0, 5);
-  });
+function isValidCardValues(values) {
+  return Array.isArray(values) && values.length === 25 && values[12] === 0 && values.every(
+    (value, index) => index === 12 || Number.isInteger(value) && value >= 0 && value <= 75
+  );
+}
+
+function importCard(id, values) {
   const cells = [];
-  for (let r = 0; r < 5; r++) {
-    for (let c = 0; c < 5; c++) {
-      if (r === 2 && c === 2) cells.push("FREE");
-      else cells.push(cols[c][r]);
+  for (let row = 0; row < 5; row++) {
+    for (let column = 0; column < 5; column++) {
+      const value = values[column * 5 + row];
+      cells.push(row === 2 && column === 2 ? "FREE" : value);
     }
   }
-  return { id: seed, cells };
+  return { id, cells };
+}
+
+function applyCardCatalog(source) {
+  const ids = Object.keys(source || {});
+  const expectedIds = Array.from({ length: CARD_COUNT }, (_, index) => String(index + 1));
+  const hasEveryCard = expectedIds.every((id) => Object.prototype.hasOwnProperty.call(source, id));
+  const hasOnlyExpectedCards = ids.length === CARD_COUNT && ids.every((id) => expectedIds.includes(id));
+  if (!hasEveryCard || !hasOnlyExpectedCards || expectedIds.some((id) => !isValidCardValues(source[id]))) {
+    throw new Error("Card data must contain 1,000 valid 5x5 cartelas");
+  }
+
+  cardNumbers = expectedIds.map(Number);
+  cardDefs = Object.fromEntries(cardNumbers.map((id) => [id, importCard(id, source[String(id)])]));
+  cardsReady = true;
+  cardsLoadError = false;
+  updatePickInfo();
+}
+
+async function loadCardCatalog() {
+  try {
+    if (window.LUCKY_BINGO_CARD_DATA) {
+      applyCardCatalog(window.LUCKY_BINGO_CARD_DATA);
+      return;
+    }
+
+    const response = await fetch(CARD_DATA_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`Card data request failed with ${response.status}`);
+    applyCardCatalog(await response.json());
+  } catch (error) {
+    cardNumbers = [];
+    cardDefs = {};
+    cardsReady = false;
+    cardsLoadError = true;
+    updatePickInfo();
+    toast("CARD DATA UNAVAILABLE", "lose");
+    console.error("Unable to load card number.json", error);
+  }
 }
 
 function ensureCard(id) {
-  if (!cardDefs[id]) cardDefs[id] = makeCard(id);
-  return cardDefs[id];
+  return cardDefs[id] || null;
 }
 
 function prizePool() {
@@ -183,6 +259,10 @@ function renderRooms() {
 }
 
 function enterRoom(roomStake) {
+  if (!cardsReady) {
+    toast(cardsLoadError ? "CARD DATA UNAVAILABLE" : "CARD DATA LOADING", "lose");
+    return;
+  }
   if (!canAfford(roomStake)) {
     openWallet("deposit");
     toast("DEPOSIT TO PLAY", "lose");
@@ -194,7 +274,6 @@ function enterRoom(roomStake) {
   selected = new Set();
   selectedPreviewId = null;
   takenByOthers = new Set();
-  cardDefs = {};
   botPlayers = 8 + Math.floor(Math.random() * 16);
   showView("pick");
   $("pick-stake").textContent = String(stake);
@@ -209,32 +288,41 @@ function enterRoom(roomStake) {
 
 function updatePickInfo() {
   const limit = Math.min(MAX_PICK, Math.floor(balance / stake));
+  const waitingForStart = pickLeft > 0;
+  const startButton = $("start-game");
   $("pick-count").textContent = String(selected.size);
   $("pick-limit").textContent = String(limit);
   $("pick-pool").textContent = fmt(prizePool());
   $("pick-cost").textContent = String(stake);
   $("pick-balance").textContent = fmtBal(balance);
-  $("start-game").disabled = selected.size === 0;
-  $("pick-state").textContent = selected.size ? "Ready" : "Waiting…";
-  $("pick-helper").textContent = selected.size
-    ? `${selected.size} cartela${selected.size === 1 ? "" : "s"} selected — start when ready.`
-    : "Pick a cartela number or use Random Pick.";
+  startButton.disabled = !cardsReady || selected.size === 0 || waitingForStart;
+  startButton.innerHTML = waitingForStart
+    ? '<span aria-hidden="true">⌛</span> WAITING…'
+    : '<span aria-hidden="true">▶</span> START!';
+  $("pick-state").textContent = !cardsReady ? "Cards unavailable" : waitingForStart ? "Round opening soon" : selected.size ? "Ready" : "Waiting…";
+  $("pick-helper").textContent = !cardsReady
+    ? cardsLoadError ? "The 1,000 card numbers could not be loaded." : "Loading all 1,000 card numbers…"
+    : waitingForStart
+      ? "Select your cartela. The round starts when the countdown reaches zero."
+      : selected.size
+        ? `${selected.size} cartela${selected.size === 1 ? "" : "s"} selected — starting now.`
+        : "Pick a cartela number or use Random Pick.";
 }
 
 function buildCardGrid() {
   const grid = $("card-grid");
   grid.replaceChildren();
-  for (let i = 1; i <= CARD_COUNT; i++) {
+  cardNumbers.forEach((id) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "lb-pick";
-    btn.textContent = String(i);
-    btn.dataset.id = String(i);
-    btn.addEventListener("click", () => toggleCard(i));
-    btn.addEventListener("mouseenter", () => previewCard(i));
-    btn.addEventListener("focus", () => previewCard(i));
+    btn.textContent = String(id);
+    btn.dataset.id = String(id);
+    btn.addEventListener("click", () => toggleCard(id));
+    btn.addEventListener("mouseenter", () => previewCard(id));
+    btn.addEventListener("focus", () => previewCard(id));
     grid.appendChild(btn);
-  }
+  });
   paintPicks();
 }
 
@@ -260,6 +348,10 @@ function renderCartelaPreview() {
   }
 
   const card = ensureCard(selectedPreviewId);
+  if (!card) {
+    empty.hidden = false;
+    return;
+  }
   empty.hidden = true;
   const cardEl = document.createElement("div");
   cardEl.className = "lb-cartela-card";
@@ -279,14 +371,14 @@ function renderCartelaPreview() {
 }
 
 function previewCard(id) {
-  if (takenByOthers.has(id) && !selected.has(id)) return;
+  if (!cardsReady || (takenByOthers.has(id) && !selected.has(id))) return;
   selectedPreviewId = id;
-  ensureCard(id);
   paintPicks();
   renderCartelaPreview();
 }
 
 function toggleCard(id) {
+  if (!cardsReady) return;
   if (takenByOthers.has(id) && !selected.has(id)) {
     toast("CARTELA ALREADY TAKEN", "lose");
     return;
@@ -310,15 +402,17 @@ function toggleCard(id) {
 
 function randomAvailableCard() {
   const limit = Math.min(MAX_PICK, Math.floor(balance / stake));
-  const available = Array.from({ length: CARD_COUNT }, (_, index) => index + 1).filter(
-    (id) => !takenByOthers.has(id) && !selected.has(id)
-  );
+  const available = cardNumbers.filter((id) => !takenByOthers.has(id) && !selected.has(id));
   if (selected.size >= limit || !available.length) return null;
   return available[Math.floor(Math.random() * available.length)];
 }
 
 function randomPick(amount) {
   const limit = Math.min(MAX_PICK, Math.floor(balance / stake));
+  if (!cardsReady) {
+    toast(cardsLoadError ? "CARD DATA UNAVAILABLE" : "CARD DATA LOADING", "lose");
+    return;
+  }
   if (limit <= 0) {
     toast("NOT ENOUGH BALANCE", "lose");
     return;
@@ -342,13 +436,22 @@ function randomPick(amount) {
   toast(`${added} RANDOM CARTELA${added === 1 ? "" : "S"} PICKED`, "win");
 }
 
+function updatePickCountdownDisplay() {
+  const seconds = $("pick-secs");
+  const timer = $("pick-timer");
+  if (seconds) seconds.textContent = formatCountdown(pickLeft);
+  if (timer) timer.classList.toggle("is-urgent", pickLeft <= 10);
+}
+
 function startPickCountdown() {
   clearInterval(pickTimer);
-  pickLeft = PICK_SECS;
-  $("pick-secs").textContent = String(pickLeft);
+  pickLeft = getPickCountdownSeconds();
+  updatePickCountdownDisplay();
+  updatePickInfo();
   pickTimer = setInterval(() => {
     pickLeft -= 1;
-    $("pick-secs").textContent = String(pickLeft);
+    updatePickCountdownDisplay();
+    updatePickInfo();
     if (pickLeft <= 0) {
       clearInterval(pickTimer);
       if (selected.size > 0) startGame();
@@ -364,7 +467,7 @@ function simulateOthersPicking() {
   const tick = () => {
     if (!views.pick.classList.contains("is-on")) return;
     for (let n = 0; n < 2; n++) {
-      const id = 1 + Math.floor(Math.random() * CARD_COUNT);
+      const id = cardNumbers[Math.floor(Math.random() * cardNumbers.length)];
       if (!selected.has(id) && !takenByOthers.has(id) && takenByOthers.size < 55) {
         takenByOthers.add(id);
       }
@@ -377,6 +480,10 @@ function simulateOthersPicking() {
 }
 
 function startGame() {
+  if (pickLeft > 0) {
+    toast("ROUND STARTS WHEN THE COUNTDOWN ENDS", "lose");
+    return;
+  }
   clearInterval(pickTimer);
   const cost = stake * selected.size;
   if (cost > balance) {
@@ -390,6 +497,11 @@ function startGame() {
 
   playing = true;
   claimed = false;
+  roundOutcome = null;
+  roundWinnerName = "";
+  roundWinKind = "";
+  roundWinCardId = null;
+  hideRoundResult();
   called = [];
   callPool = shuffle(Array.from({ length: 75 }, (_, i) => i + 1));
   showView("game");
@@ -402,6 +514,63 @@ function startGame() {
   renderMineCards();
   clearInterval(callTimer);
   callTimer = setInterval(nextCall, CALL_MS);
+}
+
+function hideRoundResult() {
+  const result = $("round-result");
+  if (!result) return;
+  result.hidden = true;
+  result.className = "lb-round-result";
+  result.replaceChildren();
+}
+
+function showRoundResult(outcome, winnerName, kind = "LINE", cardId = null) {
+  const result = $("round-result");
+  if (!result) return;
+  roundOutcome = outcome;
+  roundWinnerName = winnerName;
+  roundWinKind = kind;
+  roundWinCardId = cardId;
+  result.className = `lb-round-result is-${outcome}`;
+  result.innerHTML = `
+    <span class="lb-round-result-burst" aria-hidden="true">✦</span>
+    <strong>${outcome === "win" ? "WON" : "ROUND OVER"}</strong>
+    <span>${outcome === "win" ? `${winnerName} · ${kind}${cardId ? ` on card #${cardId}` : ""}` : `${winnerName} has won.`}</span>
+  `;
+  result.hidden = false;
+  result.animate(
+    [{ opacity: 0, transform: "translateY(-10px) scale(.92)" }, { opacity: 1, transform: "translateY(0) scale(1)" }],
+    { duration: 520, easing: "cubic-bezier(.2,.8,.2,1)" }
+  );
+}
+
+function winningCellIndexes(card, hit, kind) {
+  const lines = [];
+  for (let row = 0; row < 5; row++) lines.push([0, 1, 2, 3, 4].map((column) => row * 5 + column));
+  for (let column = 0; column < 5; column++) lines.push([0, 1, 2, 3, 4].map((row) => row * 5 + column));
+  lines.push([0, 6, 12, 18, 24], [4, 8, 12, 16, 20]);
+  if (kind === "BLACKOUT") return Array.from({ length: 25 }, (_, index) => index);
+  if (kind === "CORNERS") return [0, 4, 20, 24];
+  const line = lines.find((indexes) => indexes.every((index) => cellHit(card, index, hit)));
+  return line || [];
+}
+
+function markLoserCards() {
+  const wrap = $("mine-cards");
+  if (!wrap) return;
+  wrap.classList.add("has-loser-cards");
+  wrap.querySelectorAll(".lb-card").forEach((card) => card.classList.add("is-loser"));
+}
+
+function highlightWinningCard(cardId, kind) {
+  const wrap = $("mine-cards");
+  const card = wrap?.querySelector(`[data-id="${cardId}"]`);
+  if (!card) return;
+  card.classList.add("is-winner");
+  const hit = new Set(called);
+  const definition = ensureCard(cardId);
+  const indexes = definition ? winningCellIndexes(definition, hit, kind) : [];
+  [...card.querySelectorAll(".lb-cell")].forEach((cell, index) => cell.classList.toggle("is-win", indexes.includes(index)));
 }
 
 function buildBoard() {
@@ -429,6 +598,7 @@ function renderMineCards() {
   wrap.replaceChildren(
     ...[...selected].map((id) => {
       const card = ensureCard(id);
+      if (!card) return null;
       const el = document.createElement("div");
       el.className = "lb-card";
       el.dataset.id = String(id);
@@ -451,17 +621,21 @@ function renderMineCards() {
         cells.appendChild(cell);
       });
       return el;
-    })
+    }).filter(Boolean)
   );
+  if (roundOutcome === "lose") markLoserCards();
+  if (roundOutcome === "win" && roundWinCardId !== null) highlightWinningCard(roundWinCardId, roundWinKind);
 }
 
 function nextCall() {
   if (!playing || !callPool.length) {
     clearInterval(callTimer);
     if (!claimed) {
-      $("game-status").textContent = "No Bingo — round over";
-      toast("NO WINNER", "lose");
       playing = false;
+      $("game-status").textContent = "No Bingo — round over";
+      showRoundResult("lose", "No player");
+      markLoserCards();
+      toast("NO WINNER", "lose");
     }
     return;
   }
@@ -513,7 +687,8 @@ function bestWinKind(card, hit) {
 function playerHasBingo() {
   const hit = new Set(called);
   for (const id of selected) {
-    if (bestWinKind(ensureCard(id), hit)) return true;
+    const card = ensureCard(id);
+    if (card && bestWinKind(card, hit)) return true;
   }
   return false;
 }
@@ -524,7 +699,8 @@ function claimBingo() {
   let kind = null;
   let winCard = null;
   for (const id of selected) {
-    const currentKind = bestWinKind(ensureCard(id), hit);
+    const card = ensureCard(id);
+    const currentKind = card ? bestWinKind(card, hit) : null;
     if (currentKind) {
       kind = currentKind;
       winCard = id;
@@ -545,8 +721,14 @@ function claimBingo() {
   balance += win;
   saveBalance();
   renderBalance();
+  roundOutcome = "win";
+  roundWinnerName = PLAYER_NAME;
+  roundWinKind = kind;
+  roundWinCardId = winCard;
   $("game-status").textContent = kind + " on card #" + winCard + " · +" + fmt(win) + " ETB";
-  toast("BINGO! +" + fmt(win), "win");
+  showRoundResult("win", PLAYER_NAME, kind, winCard);
+  renderMineCards();
+  toast("WON! +" + fmt(win), "win");
   $("bingo-btn").disabled = true;
 }
 
@@ -554,8 +736,12 @@ function botWins() {
   claimed = true;
   playing = false;
   clearInterval(callTimer);
+  roundOutcome = "lose";
+  roundWinnerName = "Another player";
   $("bingo-btn").disabled = true;
   $("game-status").textContent = "Another player claimed Bingo";
+  showRoundResult("lose", "Another player");
+  renderMineCards();
   toast("SOMEONE ELSE WON", "lose");
 }
 
@@ -565,38 +751,224 @@ function leaveGame() {
   stopRoomUpdates();
   playing = false;
   claimed = false;
+  roundOutcome = null;
+  roundWinnerName = "";
+  roundWinKind = "";
+  roundWinCardId = null;
+  hideRoundResult();
   selected = new Set();
   selectedPreviewId = null;
   showView("lobby");
   renderRooms();
 }
 
+function updateWalletBalances() {
+  const panelBalance = $("panel-balance");
+  const withdrawAvailable = $("withdraw-available");
+  if (panelBalance) panelBalance.textContent = fmtBal(balance);
+  if (withdrawAvailable) withdrawAvailable.textContent = fmtBal(balance);
+}
+
 function setWalletTab(tab) {
+  const activeTab = tab === "withdraw" ? "withdraw" : "deposit";
   document.querySelectorAll("[data-wallet-tab]").forEach((button) => {
-    const active = button.dataset.walletTab === tab;
+    const active = button.dataset.walletTab === activeTab;
     button.classList.toggle("is-active", active);
     button.setAttribute("aria-selected", String(active));
   });
   document.querySelectorAll("[data-wallet-view]").forEach((view) => {
-    const active = view.dataset.walletView === tab;
+    const active = view.dataset.walletView === activeTab;
     view.classList.toggle("is-active", active);
     view.hidden = !active;
   });
+  clearWalletFeedback(activeTab);
 }
 
 function openWallet(tab = "deposit") {
+  const activeTab = tab === "withdraw" ? "withdraw" : "deposit";
   renderBalance();
-  setWalletTab(tab);
+  updateDepositAccount();
+  updateProviderButtons("deposit");
+  updateProviderButtons("withdraw");
+  setWalletTab(activeTab);
   $("wallet-panel").hidden = false;
+  setTimeout(() => document.querySelector(`[data-wallet-tab="${activeTab}"]`)?.focus(), 40);
 }
 
 function closeWallet() {
   $("wallet-panel").hidden = true;
 }
 
+function clearWalletFeedback(action) {
+  const feedback = action === "withdraw" ? $("withdraw-feedback") : $("deposit-feedback");
+  if (!feedback) return;
+  feedback.hidden = true;
+  feedback.textContent = "";
+  feedback.classList.remove("is-error");
+}
+
+function showWalletFeedback(action, message, isError = false) {
+  const feedback = action === "withdraw" ? $("withdraw-feedback") : $("deposit-feedback");
+  if (!feedback) return;
+  feedback.textContent = message;
+  feedback.classList.toggle("is-error", isError);
+  feedback.hidden = false;
+}
+
+function updateDepositAccount() {
+  const method = walletState.deposit;
+  const account = PAYMENT_METHODS[method] || PAYMENT_METHODS.Telebirr;
+  const methodLabel = $("deposit-selected-method");
+  const accountName = $("deposit-account-name");
+  const accountNumber = $("deposit-account-number");
+  if (methodLabel) methodLabel.textContent = method;
+  if (accountName) accountName.textContent = account.accountName;
+  if (accountNumber) accountNumber.textContent = account.accountNumber;
+}
+
+function updateProviderButtons(action) {
+  document.querySelectorAll(`[data-provider-action="${action}"]`).forEach((button) => {
+    const selectedMethod = walletState[action];
+    const active = button.dataset.method === selectedMethod;
+    button.classList.toggle("is-selected", active);
+    button.setAttribute("aria-pressed", String(active));
+  });
+}
+
 function selectWalletMethod(action, method) {
+  if (!walletState[action] || !PAYMENT_METHODS[method]) return;
+  walletState[action] = method;
+  updateProviderButtons(action);
+  clearWalletFeedback(action);
+  if (action === "deposit") updateDepositAccount();
   const actionLabel = action === "deposit" ? "Deposit" : "Withdraw";
   toast(`${actionLabel}: ${method} selected`, "win");
+}
+
+function normaliseWalletAmount(value) {
+  const amount = Math.floor(Number(value));
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function makeTransactionId() {
+  return `TX-${String(Date.now()).slice(-6)}${Math.floor(10 + Math.random() * 90)}`;
+}
+
+function saveWalletRequest(request) {
+  const transaction = {
+    id: makeTransactionId(),
+    playerId: PLAYER_ID,
+    player: PLAYER_NAME,
+    type: request.type,
+    method: request.method,
+    amount: request.amount,
+    requested: "just now",
+    status: "pending",
+    phone: request.phone || "",
+    reference: request.reference || "",
+    accountName: request.accountName || "",
+    accountNumber: request.accountNumber || "",
+  };
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "{}");
+    const transactions = Array.isArray(saved.transactions) ? saved.transactions : [];
+    saved.transactions = [transaction, ...transactions].slice(0, 100);
+    localStorage.setItem(ADMIN_STATE_KEY, JSON.stringify(saved));
+  } catch (error) {
+    // The player request remains confirmed in the UI even if local admin storage is unavailable.
+  }
+
+  return transaction;
+}
+
+function handleDepositSubmit(event) {
+  event.preventDefault();
+  const amount = normaliseWalletAmount($("deposit-amount").value);
+  const reference = $("deposit-reference").value.trim();
+  const method = walletState.deposit;
+  const account = PAYMENT_METHODS[method] || PAYMENT_METHODS.Telebirr;
+
+  if (amount < MIN_WALLET_AMOUNT) {
+    showWalletFeedback("deposit", `Minimum deposit amount is ${MIN_WALLET_AMOUNT} ETB.`, true);
+    toast("MINIMUM 50 ETB", "lose");
+    return;
+  }
+  if (reference.length < 4) {
+    showWalletFeedback("deposit", "Paste a valid transaction reference or SMS confirmation.", true);
+    toast("REFERENCE REQUIRED", "lose");
+    return;
+  }
+
+  const transaction = saveWalletRequest({ type: "deposit", method, amount, reference, accountName: account.accountName, accountNumber: account.accountNumber });
+  const bonus = amount >= 100 ? Math.floor(amount * 0.2) : 0;
+  showWalletFeedback(
+    "deposit",
+    `Deposit request ${transaction.id} was sent via ${method}. ${bonus ? `Bonus pending: ${fmt(bonus)} ETB.` : "Admin approval is required."}`
+  );
+  event.currentTarget.reset();
+  toast("DEPOSIT REQUEST SENT", "win");
+}
+
+function handleWithdrawSubmit(event) {
+  event.preventDefault();
+  const amount = normaliseWalletAmount($("withdraw-amount").value);
+  const phone = $("withdraw-phone").value.trim();
+  const method = walletState.withdraw;
+
+  if (phone.replace(/\D/g, "").length < 9) {
+    showWalletFeedback("withdraw", "Enter the registered phone number for this withdrawal.", true);
+    toast("PHONE REQUIRED", "lose");
+    return;
+  }
+  if (amount < MIN_WALLET_AMOUNT) {
+    showWalletFeedback("withdraw", `Minimum withdrawal amount is ${MIN_WALLET_AMOUNT} ETB.`, true);
+    toast("MINIMUM 50 ETB", "lose");
+    return;
+  }
+  if (amount > balance) {
+    showWalletFeedback("withdraw", `You can withdraw up to ${fmtBal(balance)} ETB from your available balance.`, true);
+    toast("LOW BALANCE", "lose");
+    return;
+  }
+
+  const transaction = saveWalletRequest({ type: "withdraw", method, amount, phone });
+  showWalletFeedback("withdraw", `Withdrawal request ${transaction.id} was sent via ${method}. Admin approval is required before payment.`);
+  event.currentTarget.reset();
+  toast("WITHDRAWAL REQUEST SENT", "win");
+}
+
+function copyText(text) {
+  if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+    return navigator.clipboard.writeText(text);
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.left = "-9999px";
+  document.body.appendChild(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } finally {
+    area.remove();
+  }
+  return copied ? Promise.resolve() : Promise.reject(new Error("Copy unavailable"));
+}
+
+function copyDepositAccount() {
+  const number = $("deposit-account-number").textContent.trim();
+  copyText(number)
+    .then(() => {
+      showWalletFeedback("deposit", `${walletState.deposit} number copied: ${number}`);
+      toast("NUMBER COPIED", "win");
+    })
+    .catch(() => {
+      showWalletFeedback("deposit", `Copy failed. Use this number manually: ${number}`, true);
+      toast("COPY FAILED", "lose");
+    });
 }
 
 function bind() {
@@ -623,9 +995,15 @@ function bind() {
   document.querySelectorAll("[data-wallet-tab]").forEach((button) => {
     button.addEventListener("click", () => setWalletTab(button.dataset.walletTab));
   });
-  document.querySelectorAll("[data-wallet-action]").forEach((button) => {
-    button.addEventListener("click", () => selectWalletMethod(button.dataset.walletAction, button.dataset.method));
+  document.querySelectorAll("[data-provider-action]").forEach((button) => {
+    button.addEventListener("click", () => selectWalletMethod(button.dataset.providerAction, button.dataset.method));
   });
+  $("copy-deposit-account").addEventListener("click", copyDepositAccount);
+  $("deposit-form").addEventListener("submit", handleDepositSubmit);
+  $("withdraw-form").addEventListener("submit", handleWithdrawSubmit);
+  updateDepositAccount();
+  updateProviderButtons("deposit");
+  updateProviderButtons("withdraw");
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !$("wallet-panel").hidden) closeWallet();
   });
@@ -639,3 +1017,4 @@ renderBalance();
 bind();
 startClock();
 showView("lobby");
+loadCardCatalog();
