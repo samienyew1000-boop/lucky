@@ -85,6 +85,8 @@ const DEFAULT_SETTINGS = {
   commission: 20,
   threshold: 10,
   countdown: 60,
+  startingBonus: 50,
+  startingBonusEnabled: true,
   autoCall: true,
   maintenance: false,
   transactionAlerts: true,
@@ -617,6 +619,8 @@ function bindSettings() {
     "setting-commission": "commission",
     "setting-threshold": "threshold",
     "setting-countdown": "countdown",
+    "setting-starting-bonus": "startingBonus",
+    "setting-starting-bonus-enabled": "startingBonusEnabled",
     "setting-autocall": "autoCall",
     "setting-maintenance": "maintenance",
     "setting-transactions": "transactionAlerts",
@@ -632,6 +636,7 @@ function bindSettings() {
       settings[key] = input.type === "checkbox" ? input.checked : input.value;
       if (input.type === "number") settings[key] = Number(input.value);
       if (key === "countdown") settings[key] = Math.min(600, Math.max(10, Math.round(settings[key] || 60)));
+      if (key === "startingBonus") settings[key] = Math.min(100000, Math.max(0, Math.round(settings[key] || 0)));
       saveSettings();
       $("settings-saved").textContent = "Saved just now";
       if (key === "autoCall") {

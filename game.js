@@ -1,10 +1,12 @@
 "use strict";
 
 const BALANCE_KEY = "lucky-bingo-balance";
+const STARTING_BONUS_CLAIMED_KEY = "lucky-bingo-starting-bonus-claimed";
 const ADMIN_STATE_KEY = "lucky-bingo-admin-state-v1";
 const ADMIN_SETTINGS_KEY = "lucky-bingo-admin-settings-v1";
 const CARD_DATA_URL = "card%20number.json";
-const START_BALANCE = 5;
+const START_BALANCE = 0;
+const DEFAULT_STARTING_BONUS = 50;
 const CARD_COUNT = 1000;
 const MAX_PICK = 4;
 const CALL_MS = 1600;
@@ -42,7 +44,8 @@ const views = {
   game: $("view-game"),
 };
 
-let balance = loadNum(BALANCE_KEY, START_BALANCE, 0);
+let startingBonusAwarded = 0;
+let balance = loadInitialBalance();
 let stake = 10;
 let selected = new Set();
 let selectedPreviewId = null;
@@ -69,6 +72,32 @@ let walletState = { deposit: "Telebirr", withdraw: "Telebirr" };
 function loadNum(key, fallback, minimum = 1) {
   const n = Number(localStorage.getItem(key));
   return Number.isFinite(n) && n >= minimum ? n : fallback;
+}
+
+function getStartingBonusSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_SETTINGS_KEY) || "null") || {};
+    const amount = Number(saved.startingBonus);
+    return {
+      enabled: saved.startingBonusEnabled !== false,
+      amount: Number.isFinite(amount) ? Math.max(0, amount) : DEFAULT_STARTING_BONUS,
+    };
+  } catch (error) {
+    return { enabled: true, amount: DEFAULT_STARTING_BONUS };
+  }
+}
+
+function loadInitialBalance() {
+  const stored = Number(localStorage.getItem(BALANCE_KEY));
+  const current = Number.isFinite(stored) && stored >= 0 ? stored : START_BALANCE;
+  if (localStorage.getItem(STARTING_BONUS_CLAIMED_KEY) === "1") return current;
+
+  const bonus = getStartingBonusSettings();
+  startingBonusAwarded = bonus.enabled ? bonus.amount : 0;
+  localStorage.setItem(STARTING_BONUS_CLAIMED_KEY, "1");
+  const initialBalance = current + startingBonusAwarded;
+  localStorage.setItem(BALANCE_KEY, String(initialBalance));
+  return initialBalance;
 }
 
 function getPickCountdownSeconds() {
@@ -1015,6 +1044,7 @@ function startClock() {
 
 renderBalance();
 bind();
+if (startingBonusAwarded > 0) toast(`STARTING BONUS +${fmt(startingBonusAwarded)} ETB`, "win");
 startClock();
 showView("lobby");
 loadCardCatalog();
