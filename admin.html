@@ -202,6 +202,11 @@
               </article>
               <article class="admin-panel admin-room-management-panel">
                 <div class="admin-panel-heading"><div><span class="admin-panel-eyebrow">ROOMS</span><h2>Room availability</h2></div><span class="admin-small-muted">Player lobby view</span></div>
+                <form class="admin-room-add-form" id="room-add-form">
+                  <label><span>Stake (ETB)</span><input id="room-add-stake" type="number" min="1" step="1" inputmode="numeric" placeholder="100" required></label>
+                  <label><span>Players</span><input id="room-add-players" type="number" min="0" step="1" inputmode="numeric" value="0" required></label>
+                  <button type="submit" class="admin-button admin-button-primary"><span aria-hidden="true">＋</span> Add room</button>
+                </form>
                 <div class="admin-management-list" id="live-room-management"></div>
               </article>
             </div>

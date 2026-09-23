@@ -57,11 +57,29 @@
 
           <!-- PICK CARDS -->
           <section class="lb-view lb-pick-view" id="view-pick">
-            <div class="lb-pick-statusbar">
-              <button type="button" class="lb-back" id="back-lobby">← Rooms</button>
-              <div class="lb-pick-status-balance"><span id="pick-balance">5</span> ETB</div>
-              <div class="lb-pick-status-state" id="pick-state">Waiting…</div>
+            <div class="lb-pick-room-summary" aria-label="Game lobby details">
+              <div class="lb-pick-room-title">
+                <span>GAME LOBBY</span>
+                <strong id="pick-room-title">10 birr Game Lobby</strong>
+              </div>
+              <div class="lb-pick-stat"><span>ENTRY</span><b id="pick-entry">10 ETB</b></div>
+              <div class="lb-pick-stat"><span>PLAYERS</span><b id="pick-players">—</b></div>
+              <div class="lb-pick-stat"><span>AVAIL</span><b id="pick-available">—</b></div>
+              <div class="lb-pick-stat"><span>TIME</span><b id="pick-time">00:00</b></div>
             </div>
+
+            <div class="lb-pick-countdown-banner" id="pick-countdown-banner" role="status" aria-live="polite">
+              <span class="lb-pick-countdown-icon" aria-hidden="true">◷</span>
+              <span>Game starts in <strong id="pick-banner-secs">00:00</strong></span>
+            </div>
+
+            <section class="lb-winning-strip" aria-labelledby="winning-cards-title">
+              <div class="lb-winning-strip-head">
+                <strong id="winning-cards-title">LAST WINNING CARDS</strong>
+                <span>Recent winners</span>
+              </div>
+              <div class="lb-winning-cards" id="pick-winning-cards"></div>
+            </section>
 
             <div class="lb-pick-heading">
               <div>
@@ -98,33 +116,73 @@
               <span>Each selected cartela costs <b id="pick-cost">10</b> ETB</span>
             </div>
           </section>
+<!-- LIVE GAME -->
+<section class="lb-view lb-game-view" id="view-game">
+  <header class="lb-game-summary" aria-label="Current round summary">
+    <div><span>DERASH</span><strong id="game-derash">0 ETB</strong></div>
+    <div><span>PLAYERS</span><strong id="game-players">0</strong></div>
+    <div><span>STAKE</span><strong id="game-stake">0 ETB</strong></div>
+    <div><span>CALLED</span><strong><b id="call-count">0</b>/75</strong></div>
+    <div><span>ROUND</span><strong id="game-round">—</strong></div>
+  </header>
 
-          <!-- LIVE GAME -->
-          <section class="lb-view" id="view-game">
-            <div class="lb-game-top">
-              <div class="lb-call">
-                <div class="lb-call-label">CALLING</div>
-                <div class="lb-call-ball" id="call-ball">—</div>
-                <div class="lb-call-meta"><span id="call-count">0</span> / 75</div>
-              </div>
-              <div class="lb-board" id="board"></div>
-            </div>
+  <div class="lb-game-layout">
+    <section class="lb-number-board" aria-label="Bingo number board">
+      <div class="lb-number-board-head" aria-hidden="true">
+        <span>B</span><span>I</span><span>N</span><span>G</span><span>O</span>
+      </div>
+      <div class="lb-board" id="board"></div>
+    </section>
 
-            <div class="lb-mine-wrap">
-              <div class="lb-mine-head">
-                <span>YOUR CARDS</span>
-                <span id="game-pool">Prize 0 ETB</span>
-              </div>
-              <div class="lb-mine" id="mine-cards"></div>
-            </div>
+    <section class="lb-game-main" aria-label="Live game controls">
+      <div class="lb-game-toolbar">
+        <span class="lb-live-pill"><i aria-hidden="true"></i> LIVE</span>
+        <label class="lb-auto-toggle"><input type="checkbox" id="auto-mark-toggle" checked /><span aria-hidden="true"></span><b>AUTO</b></label>
+      </div>
 
-            <div class="lb-game-actions">
-              <button type="button" class="lb-bingo-btn" id="bingo-btn" disabled>BINGO!</button>
-              <button type="button" class="lb-leave" id="leave-game">LEAVE</button>
-            </div>
-            <div class="lb-status" id="game-status">Waiting for first call…</div>
-            <div class="lb-round-result" id="round-result" role="status" aria-live="assertive" hidden></div>
-          </section>
+      <div class="lb-call-panel">
+        <span class="lb-call-letter" id="call-letter">—</span>
+        <div class="lb-call-ball" id="call-ball">—</div>
+        <div class="lb-recent-calls" id="recent-calls" aria-label="Recent calls"></div>
+      </div>
+
+      <div class="lb-mine-wrap" id="mine-wrap">
+        <div class="lb-no-card-panel" id="no-card-panel">
+          <div class="lb-no-card-icon" aria-hidden="true"><span></span><i></i><b></b><em></em></div>
+          <strong id="no-card-title">ካርድ ይያዙ</strong>
+          <div class="lb-waiting-countdown" id="game-waiting-countdown" role="status" aria-live="polite" hidden>
+            <span>GAME STARTS IN</span>
+            <strong id="game-waiting-secs">00:00</strong>
+          </div>
+          <p id="no-card-message">በፍጥነት ተጫወቱ:: ይህ ካርድ ለመጫወት ይጠበቃል</p>
+          <p id="no-card-note">ደስታ ይሁን::</p>
+          <div class="lb-no-card-dots" id="no-card-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+        </div>
+        <div class="lb-mine-head">
+          <strong>YOUR CARD (<span id="game-card-number">—</span>)</strong>
+          <span class="lb-card-live">LIVE</span>
+        </div>
+        <div class="lb-mine" id="mine-cards"></div>
+      </div>
+
+      <div class="lb-game-actions">
+        <button type="button" class="lb-bingo-btn" id="bingo-btn" disabled>🎉 BINGO!</button>
+        <button type="button" class="lb-no-card-button" id="no-card-button">NO CARD</button>
+        <button type="button" class="lb-leave" id="leave-game">LEAVE</button>
+      </div>
+      <div class="lb-status" id="game-status">Waiting for first call…</div>
+      <div class="lb-round-result" id="round-result" role="status" aria-live="assertive" hidden></div>
+    </section>
+  </div>
+
+  <nav class="lb-game-nav" aria-label="Game navigation">
+    <button type="button" class="is-active"><span class="lb-nav-icon lb-nav-game" aria-hidden="true">▦</span><b>GAME</b></button>
+    <button type="button"><span class="lb-nav-icon lb-nav-history" aria-hidden="true">◷</span><b>HISTORY</b></button>
+    <button type="button"><span class="lb-nav-icon lb-nav-profile" aria-hidden="true">♙</span><b>PROFILE</b></button>
+    <button type="button"><span class="lb-nav-icon lb-nav-deposit" aria-hidden="true">⇩</span><b>DEPOSIT</b></button>
+    <button type="button"><span class="lb-nav-icon lb-nav-settings" aria-hidden="true">☼</span><b>SETTINGS</b></button>
+  </nav>
+</section>
         </main>
 
         <!-- WALLET: provider instructions and request forms -->

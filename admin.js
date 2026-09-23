@@ -96,7 +96,7 @@ const DEFAULT_SETTINGS = {
 
 let state = loadState();
 let settings = loadSettings();
-let selectedLiveRoomId = "20";
+let selectedLiveRoomId = state.rooms[0]?.id || "";
 let transactionFilter = "all";
 let transactionQuery = "";
 let transactionStatusFilter = "all";
@@ -117,7 +117,7 @@ function loadState() {
       ...copy(DEFAULT_STATE),
       ...saved,
       metrics: { ...copy(DEFAULT_STATE.metrics), ...(saved.metrics || {}) },
-      rooms: Array.isArray(saved.rooms) && saved.rooms.length ? saved.rooms : copy(DEFAULT_STATE.rooms),
+      rooms: Array.isArray(saved.rooms) ? saved.rooms : copy(DEFAULT_STATE.rooms),
       transactions: Array.isArray(saved.transactions) ? saved.transactions : copy(DEFAULT_STATE.transactions),
       players: Array.isArray(saved.players) ? saved.players : copy(DEFAULT_STATE.players),
       activities: Array.isArray(saved.activities) ? saved.activities : copy(DEFAULT_STATE.activities),
@@ -171,7 +171,7 @@ function initials(name) {
 }
 
 function currentRoom() {
-  return state.rooms.find((room) => room.id === selectedLiveRoomId) || state.rooms[0];
+  return state.rooms.find((room) => room.id === selectedLiveRoomId) || state.rooms[0] || null;
 }
 
 function pendingTransactions() {
@@ -270,8 +270,13 @@ function roomStatusLabel(status) {
 
 function renderLive() {
   const room = currentRoom();
-  if (!room) return;
   const tabs = $("live-room-tabs");
+  if (!room) {
+    tabs.innerHTML = '<p class="admin-empty-note">Add a room to begin managing bingo rounds.</p>';
+    $("live-room-management").innerHTML = '<p class="admin-empty-note">No rooms configured yet.</p>';
+    return;
+  }
+  selectedLiveRoomId = room.id;
   tabs.innerHTML = state.rooms.map((item) => `<button type="button" class="admin-room-tab${item.id === room.id ? " is-active" : ""}" data-live-room="${escapeHTML(item.id)}">${money(item.stake)} room <span>· ${item.status === "live" ? "Live" : item.status === "paused" ? "Paused" : "Waiting"}</span></button>`).join("");
   $("live-room-title").textContent = `${room.stake} ETB room`;
   $("live-round-state").className = `admin-round-state ${room.status === "paused" ? "is-paused" : room.status === "live" ? "is-live" : "is-paused"}`;
@@ -301,7 +306,67 @@ function renderCallHistory(room) {
 function renderRoomManagement() {
   const container = $("live-room-management");
   if (!container) return;
-  container.innerHTML = state.rooms.map((room) => `<div class="admin-management-row"><strong>${room.stake} ETB room</strong><span>${fmt(room.players)} players</span><button type="button" class="admin-room-toggle${room.enabled ? " is-on" : ""}" data-room-toggle="${escapeHTML(room.id)}" aria-label="${room.enabled ? "Disable" : "Enable"} ${room.stake} ETB room"></button></div>`).join("");
+  container.innerHTML = state.rooms.length
+    ? state.rooms.map((room) => `<div class="admin-management-row"><div class="admin-management-room-copy"><strong>${money(room.stake)} room</strong><span>${fmt(room.players)} players · ${room.status === "live" ? "Live" : room.status === "paused" ? "Paused" : "Waiting"}</span></div><button type="button" class="admin-room-toggle${room.enabled ? " is-on" : ""}" data-room-toggle="${escapeHTML(room.id)}" aria-label="${room.enabled ? "Disable" : "Enable"} ${room.stake} ETB room"></button><button type="button" class="admin-room-remove" data-room-remove="${escapeHTML(room.id)}" aria-label="Remove ${room.stake} ETB room">Remove</button></div>`).join("")
+    : '<p class="admin-empty-note">No rooms configured yet.</p>';
+}
+
+function makeRoomId(stake) {
+  const base = String(Math.max(1, Math.round(Number(stake) || 0)));
+  if (!state.rooms.some((room) => String(room.id) === base)) return base;
+  let suffix = 2;
+  while (state.rooms.some((room) => String(room.id) === `${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+}
+
+function addRoomFromForm(event) {
+  event.preventDefault();
+  const stake = Math.max(1, Math.round(Number($("room-add-stake").value) || 0));
+  const players = Math.max(0, Math.floor(Number($("room-add-players").value) || 0));
+  if (!stake) {
+    showToast("Enter a valid room stake.", "error");
+    return;
+  }
+  if (state.rooms.some((room) => Number(room.stake) === stake)) {
+    showToast(`${stake} ETB room already exists.`, "error");
+    return;
+  }
+  const room = {
+    id: makeRoomId(stake),
+    stake,
+    players,
+    status: "waiting",
+    enabled: true,
+    roundId: `#LB-${24090 + state.rooms.length + 1}`,
+    prizePool: stake * players,
+    lastCall: "—",
+    called: [],
+    color: ["blue", "orange", "purple", "green", "pink"][state.rooms.length % 5],
+  };
+  state.rooms.push(room);
+  selectedLiveRoomId = room.id;
+  addActivity(`Added a ${stake} ETB room`, "game", "+");
+  saveState();
+  event.target.reset();
+  $("room-add-players").value = "0";
+  renderAll();
+  showSection("live");
+  showToast(`${stake} ETB room added to the player lobby.`);
+}
+
+function removeRoom(roomId) {
+  const room = state.rooms.find((item) => String(item.id) === String(roomId));
+  if (!room) return;
+  if (room.status === "live") {
+    showToast("End the live round before removing this room.", "error");
+    return;
+  }
+  state.rooms = state.rooms.filter((item) => String(item.id) !== String(roomId));
+  if (String(selectedLiveRoomId) === String(roomId)) selectedLiveRoomId = state.rooms[0]?.id || "";
+  addActivity(`Removed the ${room.stake} ETB room`, "game", "−");
+  saveState();
+  renderAll();
+  showToast(`${room.stake} ETB room removed from the player lobby.`);
 }
 
 function randomCall(room) {
@@ -703,6 +768,12 @@ function bindEvents() {
       return;
     }
 
+    const roomRemove = event.target.closest("[data-room-remove]");
+    if (roomRemove) {
+      removeRoom(roomRemove.dataset.roomRemove);
+      return;
+    }
+
     const transactionFilterButton = event.target.closest("[data-transaction-filter]");
     if (transactionFilterButton) {
       transactionFilter = transactionFilterButton.dataset.transactionFilter;
@@ -792,6 +863,7 @@ function bindEvents() {
     renderPlayers();
   });
   $("call-interval").addEventListener("change", startLiveTimer);
+  $("room-add-form").addEventListener("submit", addRoomFromForm);
   window.addEventListener("hashchange", () => showSection(window.location.hash.slice(1), false));
   document.addEventListener("keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {

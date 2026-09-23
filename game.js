@@ -4,6 +4,8 @@ const BALANCE_KEY = "lucky-bingo-balance";
 const STARTING_BONUS_CLAIMED_KEY = "lucky-bingo-starting-bonus-claimed";
 const ADMIN_STATE_KEY = "lucky-bingo-admin-state-v1";
 const ADMIN_SETTINGS_KEY = "lucky-bingo-admin-settings-v1";
+const ROOM_LIFECYCLE_KEY = "lucky-bingo-room-lifecycle-v1";
+const LAST_WINNING_CARDS_KEY = "lucky-bingo-last-winning-cards-v1";
 const CARD_DATA_URL = "card%20number.json";
 const START_BALANCE = 0;
 const DEFAULT_STARTING_BONUS = 50;
@@ -12,6 +14,7 @@ const MAX_PICK = 4;
 const CALL_MS = 1600;
 const DEFAULT_PICK_SECS = 60;
 const ROOM_UPDATE_MS = 2400;
+const ROOM_STATUS_UPDATE_MS = 1000;
 const COMMISSION_RATE = 0.2;
 const MIN_WALLET_AMOUNT = 50;
 const PLAYER_ID = "LB-PLAYER";
@@ -23,10 +26,17 @@ const PAYMENT_METHODS = Object.freeze({
 });
 
 const ROOMS = [
-  { stake: 10, players: 98, active: "Low balance" },
-  { stake: 20, players: 106, active: "Low balance" },
-  { stake: 50, players: 86, active: "Low balance" },
+  { id: "10", stake: 10, players: 98, status: "waiting" },
+  { id: "20", stake: 20, players: 106, status: "waiting" },
+  { id: "50", stake: 50, players: 86, status: "waiting" },
 ];
+
+const DEFAULT_LAST_WINNING_CARDS = Object.freeze([
+  { cardId: 157, name: "Mengistu", stake: 5, prize: 1155 },
+  { cardId: 22, name: "Don Deva", stake: 5, prize: 362 },
+  { cardId: 230, name: "Yilma Mamo", stake: 5, prize: 362 },
+  { cardId: 268, name: "Abraha", stake: 5, prize: 362 },
+]);
 
 const LETTERS = ["B", "I", "N", "G", "O"];
 const COL_RANGES = [
@@ -55,12 +65,20 @@ let cardNumbers = [];
 let cardsReady = false;
 let cardsLoadError = false;
 let called = [];
+let manualMarked = new Set();
+let autoMarkingEnabled = true;
 let callPool = [];
 let callTimer = null;
 let pickTimer = null;
 let roomTimer = null;
+let roomStatusTimer = null;
+let roomLifecycle = loadRoomLifecycle();
+let lastWinningCards = loadLastWinningCards();
+let activeRoomId = null;
 let pickLeft = DEFAULT_PICK_SECS;
 let playing = false;
+let gameWaiting = false;
+let entryCharged = false;
 let claimed = false;
 let botPlayers = 0;
 let roundOutcome = null;
@@ -117,12 +135,178 @@ function formatCountdown(seconds) {
   return `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
 }
 
+function loadRoomLifecycle() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ROOM_LIFECYCLE_KEY) || "null");
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveRoomLifecycle() {
+  try {
+    localStorage.setItem(ROOM_LIFECYCLE_KEY, JSON.stringify(roomLifecycle));
+  } catch (error) {
+    // The room indicator can continue to run for this page if storage is unavailable.
+  }
+}
+
+function loadLastWinningCards() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAST_WINNING_CARDS_KEY) || "null");
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveLastWinningCards() {
+  try {
+    localStorage.setItem(LAST_WINNING_CARDS_KEY, JSON.stringify(lastWinningCards));
+  } catch (error) {
+    // Recent winner history is supplemental and can continue in memory if storage is unavailable.
+  }
+}
+
+function getLastWinningCards(stakeValue) {
+  const saved = lastWinningCards[String(stakeValue)];
+  return Array.isArray(saved) && saved.length ? saved : DEFAULT_LAST_WINNING_CARDS;
+}
+
+function rememberWinningCard(stakeValue, cardId, name, prize) {
+  const history = getLastWinningCards(stakeValue).filter((item) => Number(item.cardId) !== Number(cardId));
+  lastWinningCards[String(stakeValue)] = [
+    { cardId: Number(cardId), name: String(name), stake: Number(stakeValue), prize: Number(prize) },
+    ...history,
+  ].slice(0, 4);
+  saveLastWinningCards();
+}
+
+function loadAdminRooms() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "null");
+    return saved && Array.isArray(saved.rooms) ? saved.rooms : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function savePlayerRoomPlayers(roomId, players) {
+  const adminRooms = loadAdminRooms();
+  if (!adminRooms) return;
+  const room = adminRooms.find((item) => String(item.id) === String(roomId));
+  if (!room) return;
+  room.players = players;
+  try {
+    const savedState = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "{}");
+    localStorage.setItem(ADMIN_STATE_KEY, JSON.stringify({ ...savedState, rooms: adminRooms }));
+  } catch (error) {
+    // Player registration animation is non-critical when storage is unavailable.
+  }
+}
+
+function getLobbyRooms() {
+  const adminRooms = loadAdminRooms();
+  if (adminRooms === null) return ROOMS;
+  return adminRooms
+    .map((room) => ({
+      ...room,
+      id: String(room.id),
+      stake: Math.max(1, Math.round(Number(room.stake) || 0)),
+      players: Math.max(0, Math.floor(Number(room.players) || 0)),
+    }))
+    .filter((room) => room.stake > 0);
+}
+
+function getLobbyRoom(roomId) {
+  return getLobbyRooms().find((room) => String(room.id) === String(roomId)) || null;
+}
+
+function roomSourceStatus(room) {
+  const adminRooms = loadAdminRooms();
+  const adminRoom = adminRooms?.find((item) => String(item.id) === String(room.id));
+  if (adminRoom) {
+    if (adminRoom.enabled === false) return "paused";
+    if (adminRoom.status === "live" || adminRoom.status === "paused") return adminRoom.status;
+    if (adminRoom.status === "waiting") return "waiting";
+  }
+  return room.status || "waiting";
+}
+
+function roomDisplayState(room, now = Date.now()) {
+  const sourceStatus = roomSourceStatus(room);
+  const roundId = String(room.roundId || "");
+  let lifecycle = roomLifecycle[room.id];
+
+  if (sourceStatus === "live") {
+    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundId !== roundId || lifecycle.phase !== "live") {
+      lifecycle = { sourceStatus, roundId, phase: "live", startedAt: now };
+      roomLifecycle[room.id] = lifecycle;
+      saveRoomLifecycle();
+    }
+    return { type: "live", label: "Active game", ariaLabel: "Active game" };
+  }
+
+  if (sourceStatus === "paused") {
+    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundId !== roundId || lifecycle.phase !== "paused") {
+      lifecycle = { sourceStatus, roundId, phase: "paused", updatedAt: now };
+      roomLifecycle[room.id] = lifecycle;
+      saveRoomLifecycle();
+    }
+    return { type: "paused", label: "Paused", ariaLabel: "Game paused" };
+  }
+
+  if (
+    !lifecycle ||
+    lifecycle.sourceStatus !== sourceStatus ||
+    lifecycle.roundId !== roundId ||
+    !["countdown", "live"].includes(lifecycle.phase) ||
+    (lifecycle.phase === "countdown" && !Number.isFinite(Number(lifecycle.startsAt)))
+  ) {
+    lifecycle = {
+      sourceStatus,
+      roundId,
+      phase: "countdown",
+      startsAt: now + getPickCountdownSeconds() * 1000,
+    };
+    roomLifecycle[room.id] = lifecycle;
+    saveRoomLifecycle();
+  }
+
+  if (lifecycle.phase === "countdown" && now >= Number(lifecycle.startsAt)) {
+    lifecycle = { sourceStatus, roundId, phase: "live", startedAt: now };
+    roomLifecycle[room.id] = lifecycle;
+    saveRoomLifecycle();
+  }
+
+  if (lifecycle.phase === "live") {
+    return { type: "live", label: "Active game", ariaLabel: "Active game" };
+  }
+
+  const seconds = Math.max(0, Math.ceil((Number(lifecycle.startsAt) - now) / 1000));
+  return {
+    type: "countdown",
+    label: formatCountdown(seconds),
+    ariaLabel: `Game starts in ${formatCountdown(seconds)}`,
+  };
+}
+
 function saveBalance() {
   localStorage.setItem(BALANCE_KEY, String(balance));
 }
 
 function fmtBal(n) {
   return Math.floor(n).toLocaleString("en-US").replace(/,/g, " ");
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
 
 function fmt(n) {
@@ -150,8 +334,13 @@ function letterFor(n) {
 
 function showView(name) {
   Object.entries(views).forEach(([key, el]) => el.classList.toggle("is-on", key === name));
-  if (name === "lobby") startRoomUpdates();
-  else stopRoomUpdates();
+  if (name === "lobby") {
+    startRoomUpdates();
+    startRoomStatusUpdates();
+  } else {
+    stopRoomUpdates();
+    stopRoomStatusUpdates();
+  }
 }
 
 function toast(text, kind) {
@@ -165,9 +354,7 @@ function toast(text, kind) {
 
 function renderBalance() {
   const lobbyBalance = $("balance");
-  const pickBalance = $("pick-balance");
   if (lobbyBalance) lobbyBalance.textContent = fmtBal(balance);
-  if (pickBalance) pickBalance.textContent = fmtBal(balance);
   updateWalletBalances();
   renderRooms();
 }
@@ -242,13 +429,165 @@ function calculateDerash(players, roomStake) {
   return Math.floor(players * roomStake * (1 - COMMISSION_RATE));
 }
 
+function renderPickRoomSummary() {
+  const room = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+  const roomStake = room?.stake || stake;
+  const playerCount = room ? room.players + (selected.size ? 1 : 0) : 0;
+  const available = cardNumbers.length ? Math.max(0, cardNumbers.length - takenByOthers.size - selected.size) : 0;
+  const title = $("pick-room-title");
+  const entry = $("pick-entry");
+  const players = $("pick-players");
+  const availableEl = $("pick-available");
+  const time = $("pick-time");
+  const bannerSeconds = $("pick-banner-secs");
+
+  if (title) title.textContent = `${roomStake} birr Game Lobby`;
+  if (entry) entry.textContent = `${roomStake} ETB`;
+  if (players) players.textContent = room ? fmt(playerCount) : "—";
+  if (availableEl) availableEl.textContent = cardNumbers.length ? fmt(available) : "—";
+  if (time) time.textContent = formatCountdown(pickLeft);
+  if (bannerSeconds) bannerSeconds.textContent = formatCountdown(pickLeft);
+}
+
+function renderWinningCards() {
+  const wrap = $("pick-winning-cards");
+  if (!wrap) return;
+  const history = getLastWinningCards(stake);
+  wrap.innerHTML = history.map((winner) => `
+    <article class="lb-winning-card">
+      <strong>#${escapeHTML(winner.cardId)}</strong>
+      <div><b>${escapeHTML(winner.name)}</b><small>${escapeHTML(winner.stake)} birr · ${fmt(Number(winner.prize) || 0)} ETB</small></div>
+    </article>
+  `).join("");
+}
+
+function updateGameWaiting() {
+  const countdown = $("game-waiting-countdown");
+  const seconds = $("game-waiting-secs");
+  const status = $("game-status");
+  if (countdown) {
+    countdown.hidden = !gameWaiting;
+    countdown.classList.toggle("is-urgent", gameWaiting && pickLeft <= 10);
+  }
+  if (seconds && gameWaiting) seconds.textContent = formatCountdown(pickLeft);
+  if (!gameWaiting) return;
+  if (status) status.textContent = `Game starts in ${formatCountdown(pickLeft)}`;
+  updateGameSummary();
+}
+
+function updateGameSummary() {
+  const room = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+  const players = room ? room.players + (selected.size ? 1 : 0) : selected.size + botPlayers;
+  const roomStake = room?.stake || stake;
+  const derash = room ? calculateDerash(players, roomStake) : calculateDerash(players, roomStake);
+  const roundId = room?.roundId || activeRoomId || "—";
+  const derashEl = $("game-derash");
+  const playersEl = $("game-players");
+  const stakeEl = $("game-stake");
+  const roundEl = $("game-round");
+  if (derashEl) derashEl.textContent = `${fmt(derash)} ETB`;
+  if (playersEl) playersEl.textContent = fmt(players);
+  if (stakeEl) stakeEl.textContent = `${fmt(roomStake)} ETB`;
+  if (roundEl) roundEl.textContent = String(roundId).replace(/^#/, "");
+}
+
+function updateRecentCalls() {
+  const recent = $("recent-calls");
+  if (!recent) return;
+  recent.replaceChildren(
+    ...called.slice(-3).reverse().map((number) => {
+      const item = document.createElement("span");
+      item.className = "lb-recent-call";
+      item.innerHTML = `<b>${letterFor(number)}</b><i>${number}</i>`;
+      return item;
+    })
+  );
+  const latest = called[called.length - 1];
+  const letter = $("call-letter");
+  if (letter) letter.textContent = latest ? letterFor(latest) : "—";
+}
+
+function selectedCardNumbersText() {
+  const ids = [...selected].map((id) => String(id));
+  return ids.length ? ids.join(", ") : "—";
+}
+
+function selectedCardLabelText() {
+  const numbers = selectedCardNumbersText();
+  return numbers === "—" ? numbers : `CARD ${numbers}`;
+}
+
+function activeHitSet() {
+  return autoMarkingEnabled ? new Set(called) : new Set(manualMarked);
+}
+
+function updateHeldCardPanel() {
+  const panel = $("no-card-panel");
+  const title = $("no-card-title");
+  const message = $("no-card-message");
+  const note = $("no-card-note");
+  const dots = $("no-card-dots");
+  const hasHeldCard = selected.size > 0;
+
+  if (panel) panel.classList.toggle("has-held-card", hasHeldCard);
+  if (title) title.textContent = hasHeldCard ? selectedCardLabelText() : "ካርድ ይያዙ";
+  if (message) {
+    message.hidden = hasHeldCard;
+    message.textContent = "በፍጥነት ተጫወቱ:: ይህ ካርድ ለመጫወት ይጠበቃል";
+  }
+  if (note) {
+    note.hidden = hasHeldCard;
+    note.textContent = "ደስታ ይሁን::";
+  }
+  if (dots) dots.hidden = hasHeldCard;
+}
+
+function updateBingoButton() {
+  const ready = playerHasBingo();
+  const button = $("bingo-btn");
+  if (button) button.disabled = !ready || claimed;
+  return ready;
+}
+
+function setAutoMarking(enabled, announce = false) {
+  autoMarkingEnabled = Boolean(enabled);
+  manualMarked = new Set();
+  const toggle = $("auto-mark-toggle");
+  if (toggle) toggle.checked = autoMarkingEnabled;
+  renderMineCards();
+
+  if (playing && !claimed) {
+    const ready = updateBingoButton();
+    if (announce) {
+      $("game-status").textContent = ready
+        ? "You have BINGO — claim now!"
+        : autoMarkingEnabled
+          ? "Auto marking enabled — called numbers mark automatically"
+          : "Manual marking enabled — tap called numbers on your card";
+    }
+  }
+}
+
+function handleAutoMarkToggle(event) {
+  setAutoMarking(event.currentTarget.checked, true);
+}
+
+function setGameWaitingState(waiting) {
+  gameWaiting = waiting;
+  views.game.classList.toggle("is-game-waiting", waiting);
+  updateGameWaiting();
+  renderMineCards();
+}
+
 function updateRoomRegistrations() {
   if (!views.lobby.classList.contains("is-on")) return;
 
-  // Simulate new registrations arriving in one of the live rooms.
-  const room = ROOMS[Math.floor(Math.random() * ROOMS.length)];
-  const newPlayers = 1 + Math.floor(Math.random() * 2);
-  room.players += newPlayers;
+  const rooms = getLobbyRooms().filter((room) => roomSourceStatus(room) === "live");
+  if (!rooms.length) return;
+
+  const room = rooms[Math.floor(Math.random() * rooms.length)];
+  room.players += 1 + Math.floor(Math.random() * 2);
+  savePlayerRoomPlayers(room.id, room.players);
   renderRooms();
 }
 
@@ -263,51 +602,115 @@ function stopRoomUpdates() {
   roomTimer = null;
 }
 
+function startRoomStatusUpdates() {
+  if (roomStatusTimer !== null) return;
+  roomStatusTimer = setInterval(() => {
+    if (views.lobby.classList.contains("is-on")) renderRooms();
+  }, ROOM_STATUS_UPDATE_MS);
+}
+
+function stopRoomStatusUpdates() {
+  if (roomStatusTimer === null) return;
+  clearInterval(roomStatusTimer);
+  roomStatusTimer = null;
+}
+
+function roomStatusMarkup(state) {
+  if (state.type === "live") {
+    return `<span class="lb-active-badge"><span>Active game</span><i aria-hidden="true"></i></span>`;
+  }
+  if (state.type === "paused") {
+    return `<span class="lb-room-paused">Paused</span>`;
+  }
+  return `<span class="lb-countdown-badge">${state.label}</span>`;
+}
+
+function roomBalanceMessage(room, canPlay, state) {
+  if (!canPlay) return balance <= 0 ? "Low balance" : `Need ${fmt(room.stake - balance)} ETB`;
+  if (state.type === "countdown") return "Open";
+  if (state.type === "live") return "In game";
+  return "Closed";
+}
+
 function renderRooms() {
   const wrap = $("rooms");
+  const rooms = getLobbyRooms();
+  if (!rooms.length) {
+    wrap.innerHTML = '<p class="lb-empty-rooms">No rooms are available right now.</p>';
+    return;
+  }
+
   wrap.replaceChildren(
-    ...ROOMS.map((room) => {
+    ...rooms.map((room) => {
       const canPlay = canAfford(room.stake);
+      const state = roomDisplayState(room);
+      const roomOpen = canPlay && state.type === "countdown";
+      const roomClosed = state.type === "live" || state.type === "paused";
       const derash = calculateDerash(room.players, room.stake);
+      const balanceMessage = roomBalanceMessage(room, canPlay, state);
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "lb-room" + (canPlay ? "" : " is-locked");
-      btn.setAttribute("aria-label", `${canPlay ? "Play" : "Insufficient balance for"} ${room.stake} ETB room with ${room.players} players and ${derash} ETB derash`);
+      btn.className = "lb-room" + (canPlay ? "" : " is-locked") + (roomClosed ? " is-closed" : "");
+      btn.disabled = roomClosed;
+      btn.setAttribute("aria-disabled", String(roomClosed));
+      btn.setAttribute("aria-label", `${roomOpen ? "Play" : balanceMessage} ${room.stake} ETB room with ${room.players} players and ${derash} ETB derash. ${state.ariaLabel}.`);
       btn.innerHTML = `
         <span class="lb-room-stake">${room.stake} ETB</span>
-        <span class="lb-room-active${canPlay ? " is-ready" : ""}">${canPlay ? "Active" : room.active}</span>
+        <span class="lb-room-active is-${state.type}" aria-live="polite">
+          ${roomStatusMarkup(state)}
+          <span class="lb-room-active-copy">${balanceMessage}</span>
+        </span>
         <span class="lb-room-players">${fmt(room.players)}</span>
         <span class="lb-room-prize">${fmt(derash)} ETB</span>
-        <span class="lb-room-play${canPlay ? " is-enabled" : ""}">${canPlay ? "Play" : "Play"}</span>
+        <span class="lb-room-play${roomOpen ? " is-enabled" : " is-disabled"}">${roomOpen ? "Play" : roomClosed ? "Closed" : "Play"}</span>
       `;
-      btn.addEventListener("click", () => enterRoom(room.stake));
+      btn.addEventListener("click", () => enterRoom(room.id));
       wrap.appendChild(btn);
       return btn;
     })
   );
 }
 
-function enterRoom(roomStake) {
+function enterRoom(roomId) {
+  const room = getLobbyRoom(roomId);
+  if (!room) {
+    toast("ROOM UNAVAILABLE", "lose");
+    renderRooms();
+    return;
+  }
+
+  const state = roomDisplayState(room);
+  if (state.type !== "countdown") {
+    toast(state.type === "live" ? "ROUND IN PROGRESS" : "ROOM CLOSED", "lose");
+    renderRooms();
+    return;
+  }
+
   if (!cardsReady) {
     toast(cardsLoadError ? "CARD DATA UNAVAILABLE" : "CARD DATA LOADING", "lose");
     return;
   }
-  if (!canAfford(roomStake)) {
+  if (!canAfford(room.stake)) {
     openWallet("deposit");
     toast("DEPOSIT TO PLAY", "lose");
     return;
   }
 
   clearInterval(pickTimer);
-  stake = roomStake;
+  clearInterval(callTimer);
+  activeRoomId = String(room.id);
+  gameWaiting = false;
+  entryCharged = false;
+  stake = room.stake;
   selected = new Set();
   selectedPreviewId = null;
   takenByOthers = new Set();
   botPlayers = 8 + Math.floor(Math.random() * 16);
+  setGameWaitingState(false);
   showView("pick");
   $("pick-stake").textContent = String(stake);
-  $("pick-balance").textContent = fmtBal(balance);
   $("pick-cost").textContent = String(stake);
+  renderWinningCards();
   updatePickInfo();
   buildCardGrid();
   renderCartelaPreview();
@@ -323,19 +726,21 @@ function updatePickInfo() {
   $("pick-limit").textContent = String(limit);
   $("pick-pool").textContent = fmt(prizePool());
   $("pick-cost").textContent = String(stake);
-  $("pick-balance").textContent = fmtBal(balance);
-  startButton.disabled = !cardsReady || selected.size === 0 || waitingForStart;
+  startButton.disabled = !cardsReady || selected.size === 0;
   startButton.innerHTML = waitingForStart
-    ? '<span aria-hidden="true">⌛</span> WAITING…'
-    : '<span aria-hidden="true">▶</span> START!';
-  $("pick-state").textContent = !cardsReady ? "Cards unavailable" : waitingForStart ? "Round opening soon" : selected.size ? "Ready" : "Waiting…";
+    ? '<span aria-hidden="true">⌛</span> ENTER &amp; WAIT'
+    : '<span aria-hidden="true">▶</span> START GAME';
   $("pick-helper").textContent = !cardsReady
     ? cardsLoadError ? "The 1,000 card numbers could not be loaded." : "Loading all 1,000 card numbers…"
     : waitingForStart
-      ? "Select your cartela. The round starts when the countdown reaches zero."
+      ? selected.size
+        ? "Enter the game now and wait inside until the countdown reaches zero."
+        : "Select your cartela. The round starts when the countdown reaches zero."
       : selected.size
         ? `${selected.size} cartela${selected.size === 1 ? "" : "s"} selected — starting now.`
         : "Pick a cartela number or use Random Pick.";
+  renderPickRoomSummary();
+  updateGameWaiting();
 }
 
 function buildCardGrid() {
@@ -470,6 +875,8 @@ function updatePickCountdownDisplay() {
   const timer = $("pick-timer");
   if (seconds) seconds.textContent = formatCountdown(pickLeft);
   if (timer) timer.classList.toggle("is-urgent", pickLeft <= 10);
+  renderPickRoomSummary();
+  updateGameWaiting();
 }
 
 function startPickCountdown() {
@@ -483,9 +890,12 @@ function startPickCountdown() {
     updatePickInfo();
     if (pickLeft <= 0) {
       clearInterval(pickTimer);
-      if (selected.size > 0) startGame();
-      else {
+      if (selected.size > 0) {
+        if (gameWaiting) beginLiveGame();
+        else startGame();
+      } else {
         toast("NO CARD SELECTED", "lose");
+        activeRoomId = null;
         showView("lobby");
       }
     }
@@ -509,21 +919,59 @@ function simulateOthersPicking() {
 }
 
 function startGame() {
-  if (pickLeft > 0) {
-    toast("ROUND STARTS WHEN THE COUNTDOWN ENDS", "lose");
+  if (!cardsReady || !selected.size) {
+    toast("SELECT A CARTELA FIRST", "lose");
     return;
   }
-  clearInterval(pickTimer);
+  if (gameWaiting || playing) {
+    toast("YOU ARE ALREADY IN THE GAME", "win");
+    return;
+  }
+
   const cost = stake * selected.size;
   if (cost > balance) {
     toast("NOT ENOUGH BALANCE", "lose");
     showView("lobby");
     return;
   }
+
   balance -= cost;
+  entryCharged = true;
   saveBalance();
   renderBalance();
+  hideRoundResult();
+  called = [];
+  manualMarked = new Set();
+  callPool = [];
+  claimed = false;
+  roundOutcome = null;
+  roundWinnerName = "";
+  roundWinKind = "";
+  roundWinCardId = null;
+  setGameWaitingState(true);
+  showView("game");
+  buildBoard();
+  paintBoard();
+  $("call-ball").textContent = "—";
+  $("call-letter").textContent = "—";
+  $("call-count").textContent = "0";
+  updateRecentCalls();
+  updateGameWaiting();
 
+  if (pickLeft <= 0) {
+    beginLiveGame();
+    return;
+  }
+
+  $("game-status").textContent = `Game starts in ${formatCountdown(pickLeft)}`;
+  updateGameSummary();
+  toast("YOU'RE IN — WAIT FOR THE COUNTDOWN", "win");
+}
+
+function beginLiveGame() {
+  if (!selected.size || !entryCharged) return;
+  clearInterval(pickTimer);
+  setGameWaitingState(false);
   playing = true;
   claimed = false;
   roundOutcome = null;
@@ -532,13 +980,18 @@ function startGame() {
   roundWinCardId = null;
   hideRoundResult();
   called = [];
+  manualMarked = new Set();
   callPool = shuffle(Array.from({ length: 75 }, (_, i) => i + 1));
   showView("game");
-  $("game-pool").textContent = "Prize " + fmt(prizePool()) + " ETB";
+  updateGameSummary();
   $("bingo-btn").disabled = true;
-  $("game-status").textContent = "Game started — marking automatically";
+  $("game-status").textContent = autoMarkingEnabled
+    ? "Game started — marking automatically"
+    : "Game started — tap called numbers on your card";
   $("call-ball").textContent = "—";
   $("call-count").textContent = "0";
+  $("call-letter").textContent = "—";
+  updateRecentCalls();
   buildBoard();
   renderMineCards();
   clearInterval(callTimer);
@@ -596,7 +1049,7 @@ function highlightWinningCard(cardId, kind) {
   const card = wrap?.querySelector(`[data-id="${cardId}"]`);
   if (!card) return;
   card.classList.add("is-winner");
-  const hit = new Set(called);
+  const hit = activeHitSet();
   const definition = ensureCard(cardId);
   const indexes = definition ? winningCellIndexes(definition, hit, kind) : [];
   [...card.querySelectorAll(".lb-cell")].forEach((cell, index) => cell.classList.toggle("is-win", indexes.includes(index)));
@@ -623,7 +1076,13 @@ function paintBoard() {
 
 function renderMineCards() {
   const wrap = $("mine-cards");
-  const hit = new Set(called);
+  const noCardPanel = $("no-card-panel");
+  const cardNumber = $("game-card-number");
+  const hit = activeHitSet();
+  const calledSet = new Set(called);
+  if (noCardPanel) noCardPanel.hidden = !gameWaiting;
+  updateHeldCardPanel();
+  if (cardNumber) cardNumber.textContent = selectedCardNumbersText();
   wrap.replaceChildren(
     ...[...selected].map((id) => {
       const card = ensureCard(id);
@@ -632,7 +1091,7 @@ function renderMineCards() {
       el.className = "lb-card";
       el.dataset.id = String(id);
       el.innerHTML = `
-        <div class="lb-card-id">CARD #${id}</div>
+        <div class="lb-card-id">CARD ${id}</div>
         <div class="lb-binghead">${LETTERS.map((letter) => `<span>${letter}</span>`).join("")}</div>
         <div class="lb-cells"></div>
       `;
@@ -644,8 +1103,15 @@ function renderMineCards() {
           cell.classList.add("is-free", "is-hit");
           cell.textContent = "★";
         } else {
+          const hasHit = hit.has(value);
+          const hasBeenCalled = calledSet.has(value);
           cell.textContent = String(value);
-          if (hit.has(value)) cell.classList.add("is-hit");
+          if (hasHit) cell.classList.add("is-hit");
+          if (!autoMarkingEnabled && playing && !claimed && hasBeenCalled && !hasHit) {
+            cell.classList.add("is-callable");
+            cell.title = `Tap to mark ${letterFor(value)}-${value}`;
+          }
+          cell.addEventListener("click", () => toggleManualMark(value));
         }
         cells.appendChild(cell);
       });
@@ -654,6 +1120,25 @@ function renderMineCards() {
   );
   if (roundOutcome === "lose") markLoserCards();
   if (roundOutcome === "win" && roundWinCardId !== null) highlightWinningCard(roundWinCardId, roundWinKind);
+}
+
+function toggleManualMark(value) {
+  if (autoMarkingEnabled || claimed || !playing || value === "FREE") return;
+
+  if (!called.includes(value)) {
+    toast(`WAIT FOR ${letterFor(value)}-${value}`, "lose");
+    return;
+  }
+
+  const wasMarked = manualMarked.has(value);
+  if (wasMarked) manualMarked.delete(value);
+  else manualMarked.add(value);
+
+  renderMineCards();
+  const ready = updateBingoButton();
+  $("game-status").textContent = ready && !claimed
+    ? "You have BINGO — claim now!"
+    : `${wasMarked ? "Unmarked" : "Marked"} ${letterFor(value)}-${value}`;
 }
 
 function nextCall() {
@@ -670,18 +1155,23 @@ function nextCall() {
   }
   const n = callPool.pop();
   called.push(n);
+  if (!autoMarkingEnabled) manualMarked.delete(n);
   const letter = letterFor(n);
-  $("call-ball").textContent = letter + "-" + n;
+  $("call-ball").textContent = String(n);
+  $("call-letter").textContent = letter;
   $("call-count").textContent = String(called.length);
+  updateRecentCalls();
+  updateGameSummary();
   paintBoard();
   renderMineCards();
 
-  const ready = playerHasBingo();
-  $("bingo-btn").disabled = !ready || claimed;
+  const ready = updateBingoButton();
   if (ready && !claimed) {
     $("game-status").textContent = "You have BINGO — claim now!";
   } else {
-    $("game-status").textContent = "Called " + letter + "-" + n;
+    $("game-status").textContent = autoMarkingEnabled
+      ? "Called " + letter + "-" + n
+      : "Called " + letter + "-" + n + " — tap it on your card";
   }
 
   if (!claimed && called.length > 28 && Math.random() < 0.04) {
@@ -714,7 +1204,7 @@ function bestWinKind(card, hit) {
 }
 
 function playerHasBingo() {
-  const hit = new Set(called);
+  const hit = activeHitSet();
   for (const id of selected) {
     const card = ensureCard(id);
     if (card && bestWinKind(card, hit)) return true;
@@ -724,7 +1214,7 @@ function playerHasBingo() {
 
 function claimBingo() {
   if (claimed || !playing) return;
-  const hit = new Set(called);
+  const hit = activeHitSet();
   let kind = null;
   let winCard = null;
   for (const id of selected) {
@@ -750,6 +1240,7 @@ function claimBingo() {
   balance += win;
   saveBalance();
   renderBalance();
+  rememberWinningCard(stake, winCard, PLAYER_NAME, win);
   roundOutcome = "win";
   roundWinnerName = PLAYER_NAME;
   roundWinKind = kind;
@@ -775,10 +1266,20 @@ function botWins() {
 }
 
 function leaveGame() {
+  const wasWaiting = gameWaiting;
+  if (wasWaiting && entryCharged) {
+    balance += stake * selected.size;
+    saveBalance();
+    renderBalance();
+  }
   clearInterval(callTimer);
   clearInterval(pickTimer);
   stopRoomUpdates();
   playing = false;
+  gameWaiting = false;
+  entryCharged = false;
+  manualMarked = new Set();
+  activeRoomId = null;
   claimed = false;
   roundOutcome = null;
   roundWinnerName = "";
@@ -787,6 +1288,7 @@ function leaveGame() {
   hideRoundResult();
   selected = new Set();
   selectedPreviewId = null;
+  setGameWaitingState(false);
   showView("lobby");
   renderRooms();
 }
@@ -1001,17 +1503,18 @@ function copyDepositAccount() {
 }
 
 function bind() {
-  $("back-lobby").addEventListener("click", () => {
-    clearInterval(pickTimer);
-    selectedPreviewId = null;
-    showView("lobby");
-    renderRooms();
-  });
   $("start-game").addEventListener("click", startGame);
   $("random-one").addEventListener("click", () => randomPick(1));
   $("random-two").addEventListener("click", () => randomPick(2));
   $("bingo-btn").addEventListener("click", claimBingo);
+  $("no-card-button").addEventListener("click", () => toast("SELECT A CARD BEFORE PLAYING", "lose"));
   $("leave-game").addEventListener("click", leaveGame);
+  const autoToggle = $("auto-mark-toggle");
+  if (autoToggle) {
+    autoToggle.checked = true;
+    autoMarkingEnabled = true;
+    autoToggle.addEventListener("change", handleAutoMarkToggle);
+  }
   $("balance-trigger").addEventListener("click", () => openWallet("deposit"));
   $("close-wallet").addEventListener("click", closeWallet);
   $("wallet-panel").addEventListener("click", (event) => {

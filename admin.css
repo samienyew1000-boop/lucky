@@ -1447,6 +1447,51 @@
   font-size: 9px;
 }
 
+.admin-room-add-form {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) auto;
+  align-items: end;
+  gap: 7px;
+  margin: 2px 0 11px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid #edf1f5;
+}
+
+.admin-room-add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-room-add-form label > span {
+  color: #71879f;
+  font-size: 8px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.admin-room-add-form input {
+  width: 100%;
+  height: 31px;
+  padding: 0 8px;
+  border: 1px solid #dce6ef;
+  border-radius: 6px;
+  color: #3c5875;
+  font-size: 10px;
+  outline: none;
+}
+
+.admin-room-add-form input:focus {
+  border-color: #74aee9;
+  box-shadow: 0 0 0 3px rgba(55, 139, 232, .1);
+}
+
+.admin-room-add-form .admin-button {
+  min-height: 31px;
+  padding: 0 9px;
+  font-size: 9px;
+}
+
 .admin-management-list {
   display: flex;
   flex-direction: column;
@@ -1456,7 +1501,7 @@
 .admin-management-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 36px;
   padding: 5px 0;
   border-bottom: 1px solid #f0f3f6;
@@ -1466,8 +1511,15 @@
   border-bottom: 0;
 }
 
-.admin-management-row strong {
+.admin-management-room-copy {
+  display: flex;
+  min-width: 0;
   flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.admin-management-row strong {
   color: #49637e;
   font-family: Consolas, "Courier New", monospace;
   font-size: 10px;
@@ -1476,6 +1528,25 @@
 .admin-management-row span {
   color: #a0adbb;
   font-size: 9px;
+}
+
+.admin-room-remove {
+  min-height: 25px;
+  padding: 0 7px;
+  border: 1px solid #f2c8ce;
+  border-radius: 5px;
+  background: #fff;
+  color: #d84959;
+  font-size: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.admin-room-remove:hover,
+.admin-room-remove:focus-visible {
+  border-color: #e88994;
+  background: #fff5f5;
+  outline: none;
 }
 
 .admin-room-toggle {
@@ -2668,6 +2739,14 @@
     flex: 1;
   }
 
+  .admin-room-add-form {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-room-add-form .admin-button {
+    grid-column: 1 / -1;
+  }
+
   .admin-table-toolbar {
     align-items: stretch;
     flex-direction: column;
@@ -2722,6 +2801,22 @@
 }
 
 @media (max-width: 390px) {
+  .admin-room-add-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-room-add-form .admin-button {
+    grid-column: auto;
+  }
+
+  .admin-management-row {
+    gap: 5px;
+  }
+
+  .admin-room-remove {
+    padding: 0 5px;
+  }
+
   .admin-stat-grid {
     grid-template-columns: 1fr;
   }
