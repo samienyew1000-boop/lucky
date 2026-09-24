@@ -6,8 +6,7 @@
     <meta name="theme-color" content="#0a68ad" />
     <title>Lucky Bingo — Game Rooms</title>
     <link rel="stylesheet" href="style.css" />
-  </head>
-  <body>
+  <body class="is-lobby-active">
     <div class="lb-root">
       <div class="lb-frame">
         <main class="lb-main">
@@ -56,64 +55,110 @@
           </section>
 
           <!-- PICK CARDS -->
-          <section class="lb-view lb-pick-view" id="view-pick">
-            <div class="lb-pick-room-summary" aria-label="Game lobby details">
-              <div class="lb-pick-room-title">
-                <span>GAME LOBBY</span>
-                <strong id="pick-room-title">10 birr Game Lobby</strong>
+          <section class="lb-view lb-pick-view lb-selection-view" id="view-pick">
+            <header class="lb-selection-stats" aria-label="Round details">
+              <div class="lb-selection-stat">
+                <span>TIME</span>
+                <strong id="pick-time">60s</strong>
               </div>
-              <div class="lb-pick-stat"><span>ENTRY</span><b id="pick-entry">10 ETB</b></div>
-              <div class="lb-pick-stat"><span>PLAYERS</span><b id="pick-players">—</b></div>
-              <div class="lb-pick-stat"><span>AVAIL</span><b id="pick-available">—</b></div>
-              <div class="lb-pick-stat"><span>TIME</span><b id="pick-time">00:00</b></div>
+              <div class="lb-selection-stat">
+                <span>STAKE</span>
+                <strong id="pick-stake">10 ETB</strong>
+              </div>
+              <div class="lb-selection-stat">
+                <span>BALANCE</span>
+                <strong id="pick-balance">0.00 ETB</strong>
+              </div>
+            </header>
+
+            <div class="lb-selection-divider" aria-hidden="true"></div>
+
+            <div class="lb-selection-heading">
+              <h1>AVAILABLE (<span id="pick-available">—</span>)</h1>
+              <span>Tap to select</span>
             </div>
 
-            <div class="lb-pick-countdown-banner" id="pick-countdown-banner" role="status" aria-live="polite">
-              <span class="lb-pick-countdown-icon" aria-hidden="true">◷</span>
-              <span>Game starts in <strong id="pick-banner-secs">00:00</strong></span>
+            <div class="lb-card-picker lb-selection-picker" aria-label="Available bingo cards">
+              <div class="lb-card-grid lb-selection-card-grid" id="card-grid"></div>
             </div>
 
-            <section class="lb-winning-strip" aria-labelledby="winning-cards-title">
-              <div class="lb-winning-strip-head">
-                <strong id="winning-cards-title">LAST WINNING CARDS</strong>
-                <span>Recent winners</span>
-              </div>
-              <div class="lb-winning-cards" id="pick-winning-cards"></div>
+            <section class="lb-selected-cards" aria-label="Selected bingo cards">
+              <div class="lb-cartela-preview lb-selection-slots" id="cartela-preview"></div>
             </section>
 
-            <div class="lb-pick-heading">
-              <div>
-                <div class="lb-pick-kicker">STAKE <b id="pick-stake">10</b> ETB</div>
-                <div class="lb-pick-subtitle">Choose an available cartela</div>
-              </div>
-              <div class="lb-pick-count"><b id="pick-count">0</b> / <span id="pick-limit">1</span> selected</div>
-            </div>
+            <nav class="lb-game-nav lb-selection-nav" aria-label="Player navigation">
+              <button type="button" class="is-active" data-mobile-nav="game" aria-current="page">
+                <span class="lb-nav-icon lb-nav-game" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+                    <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+                    <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+                  </svg>
+                </span>
+                <b>GAME</b>
+              </button>
+              <button type="button" data-mobile-nav="history">
+                <span class="lb-nav-icon lb-nav-history" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <polyline points="12 7 12 12 15 15"></polyline>
+                  </svg>
+                </span>
+                <b>HISTORY</b>
+              </button>
+              <button type="button" data-mobile-nav="profile">
+                <span class="lb-nav-icon lb-nav-profile" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="4"></circle>
+                    <path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path>
+                  </svg>
+                </span>
+                <b>PROFILE</b>
+              </button>
+              <button type="button" data-mobile-nav="deposit">
+                <span class="lb-nav-icon lb-nav-deposit" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="4" width="16" height="16" rx="3"></rect>
+                    <polyline points="8 12 12 16 16 12"></polyline>
+                    <line x1="12" y1="8" x2="12" y2="16"></line>
+                  </svg>
+                </span>
+                <b>DEPOSIT</b>
+              </button>
+              <button type="button" data-mobile-nav="settings">
+                <span class="lb-nav-icon lb-nav-settings" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3.5"></circle>
+                    <line x1="12" y1="2" x2="12" y2="5"></line>
+                    <line x1="12" y1="19" x2="12" y2="22"></line>
+                    <line x1="2" y1="12" x2="5" y2="12"></line>
+                    <line x1="19" y1="12" x2="22" y2="12"></line>
+                    <line x1="4.93" y1="4.93" x2="7.05" y2="7.05"></line>
+                    <line x1="16.95" y1="16.95" x2="19.07" y2="19.07"></line>
+                    <line x1="4.93" y1="19.07" x2="7.05" y2="16.95"></line>
+                    <line x1="16.95" y1="7.05" x2="19.07" y2="4.93"></line>
+                  </svg>
+                </span>
+                <b>SETTINGS</b>
+              </button>
+            </nav>
 
-            <div class="lb-pick-content">
-              <div class="lb-card-picker" aria-label="Cartela numbers">
-                <div class="lb-card-grid" id="card-grid"></div>
-              </div>
-
-              <aside class="lb-cartela-panel" aria-label="Selected cartela preview">
-                <div class="lb-cartela-preview" id="cartela-preview">
-                  <div class="lb-cartela-empty" id="cartela-empty">Select a cartela<br />to preview it here</div>
-                </div>
-                <div class="lb-random-label"><span aria-hidden="true">⚄</span> RANDOM PICK</div>
-                <div class="lb-random-actions">
-                  <button type="button" class="lb-random-btn" id="random-one">x1</button>
-                  <button type="button" class="lb-random-btn" id="random-two">x2</button>
-                </div>
-                <button type="button" class="lb-start lb-start-pick" id="start-game" disabled>
-                  <span aria-hidden="true">▶</span> START!
-                </button>
-                <div class="lb-pick-helper" id="pick-helper">Pick a cartela number or use Random Pick.</div>
-              </aside>
-            </div>
-
-            <div class="lb-timer" id="pick-timer">Round begins in <span id="pick-secs">01:00</span></div>
-            <div class="lb-pick-info lb-pick-info-bottom">
-              <span>Pool <b id="pick-pool">0</b> ETB</span>
-              <span>Each selected cartela costs <b id="pick-cost">10</b> ETB</span>
+            <!-- Kept available to the existing round controller; the mobile card UI starts automatically at countdown end. -->
+            <div class="lb-selection-legacy-controls" aria-hidden="true">
+              <span id="pick-entry">10 ETB</span>
+              <span id="pick-players">—</span>
+              <span id="pick-room-title">10 birr Game Lobby</span>
+              <span id="pick-count">0</span><span id="pick-limit">2</span>
+              <span id="pick-banner-secs">00:00</span><span id="pick-secs">01:00</span>
+              <span id="pick-pool">0</span><span id="pick-cost">10</span>
+              <div id="pick-helper"></div>
+              <div id="pick-winning-cards"></div>
+              <div id="cartela-empty"></div>
+              <div id="pick-timer"></div>
+              <button type="button" id="random-one"></button>
+              <button type="button" id="random-two"></button>
+              <button type="button" id="start-game" disabled></button>
             </div>
           </section>
 <!-- LIVE GAME -->
@@ -136,7 +181,7 @@
 
     <section class="lb-game-main" aria-label="Live game controls">
       <div class="lb-game-toolbar">
-        <span class="lb-live-pill"><i aria-hidden="true"></i> LIVE</span>
+        <span class="lb-live-pill" id="game-live-status" role="status" aria-live="polite" aria-label="Live game"><i aria-hidden="true"></i><span id="game-live-label">LIVE</span></span>
         <label class="lb-auto-toggle"><input type="checkbox" id="auto-mark-toggle" checked /><span aria-hidden="true"></span><b>AUTO</b></label>
       </div>
 
@@ -147,27 +192,11 @@
       </div>
 
       <div class="lb-mine-wrap" id="mine-wrap">
-        <div class="lb-no-card-panel" id="no-card-panel">
-          <div class="lb-no-card-icon" aria-hidden="true"><span></span><i></i><b></b><em></em></div>
-          <strong id="no-card-title">ካርድ ይያዙ</strong>
-          <div class="lb-waiting-countdown" id="game-waiting-countdown" role="status" aria-live="polite" hidden>
-            <span>GAME STARTS IN</span>
-            <strong id="game-waiting-secs">00:00</strong>
-          </div>
-          <p id="no-card-message">በፍጥነት ተጫወቱ:: ይህ ካርድ ለመጫወት ይጠበቃል</p>
-          <p id="no-card-note">ደስታ ይሁን::</p>
-          <div class="lb-no-card-dots" id="no-card-dots" aria-hidden="true"><i></i><i></i><i></i></div>
-        </div>
-        <div class="lb-mine-head">
-          <strong>YOUR CARD (<span id="game-card-number">—</span>)</strong>
-          <span class="lb-card-live">LIVE</span>
-        </div>
         <div class="lb-mine" id="mine-cards"></div>
       </div>
 
       <div class="lb-game-actions">
         <button type="button" class="lb-bingo-btn" id="bingo-btn" disabled>🎉 BINGO!</button>
-        <button type="button" class="lb-no-card-button" id="no-card-button">NO CARD</button>
         <button type="button" class="lb-leave" id="leave-game">LEAVE</button>
       </div>
       <div class="lb-status" id="game-status">Waiting for first call…</div>
@@ -176,14 +205,98 @@
   </div>
 
   <nav class="lb-game-nav" aria-label="Game navigation">
-    <button type="button" class="is-active"><span class="lb-nav-icon lb-nav-game" aria-hidden="true">▦</span><b>GAME</b></button>
-    <button type="button"><span class="lb-nav-icon lb-nav-history" aria-hidden="true">◷</span><b>HISTORY</b></button>
-    <button type="button"><span class="lb-nav-icon lb-nav-profile" aria-hidden="true">♙</span><b>PROFILE</b></button>
-    <button type="button"><span class="lb-nav-icon lb-nav-deposit" aria-hidden="true">⇩</span><b>DEPOSIT</b></button>
-    <button type="button"><span class="lb-nav-icon lb-nav-settings" aria-hidden="true">☼</span><b>SETTINGS</b></button>
+    <button type="button" class="is-active" data-mobile-nav="game" aria-current="page">
+      <span class="lb-nav-icon lb-nav-game" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="3" width="7" height="7" rx="1.5"></rect>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"></rect>
+          <rect x="14" y="14" width="7" height="7" rx="1.5"></rect>
+        </svg>
+      </span>
+      <b>GAME</b>
+    </button>
+    <button type="button" data-mobile-nav="history">
+      <span class="lb-nav-icon lb-nav-history" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9"></circle>
+          <polyline points="12 7 12 12 15 15"></polyline>
+        </svg>
+      </span>
+      <b>HISTORY</b>
+    </button>
+    <button type="button" data-mobile-nav="profile">
+      <span class="lb-nav-icon lb-nav-profile" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M5.5 20a6.5 6.5 0 0 1 13 0"></path>
+        </svg>
+      </span>
+      <b>PROFILE</b>
+    </button>
+    <button type="button" data-mobile-nav="deposit">
+      <span class="lb-nav-icon lb-nav-deposit" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="3"></rect>
+          <polyline points="8 12 12 16 16 12"></polyline>
+          <line x1="12" y1="8" x2="12" y2="16"></line>
+        </svg>
+      </span>
+      <b>DEPOSIT</b>
+    </button>
+    <button type="button" data-mobile-nav="settings">
+      <span class="lb-nav-icon lb-nav-settings" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3.5"></circle>
+          <line x1="12" y1="2" x2="12" y2="5"></line>
+          <line x1="12" y1="19" x2="12" y2="22"></line>
+          <line x1="2" y1="12" x2="5" y2="12"></line>
+          <line x1="19" y1="12" x2="22" y2="12"></line>
+          <line x1="4.93" y1="4.93" x2="7.05" y2="7.05"></line>
+          <line x1="16.95" y1="16.95" x2="19.07" y2="19.07"></line>
+          <line x1="4.93" y1="19.07" x2="7.05" y2="16.95"></line>
+          <line x1="16.95" y1="7.05" x2="19.07" y2="4.93"></line>
+        </svg>
+      </span>
+      <b>SETTINGS</b>
+    </button>
   </nav>
 </section>
         </main>
+
+        <div class="lb-mobile-panel" id="mobile-panel" hidden>
+          <section class="lb-mobile-panel-surface" role="dialog" aria-modal="true" aria-labelledby="mobile-panel-title">
+            <header class="lb-mobile-panel-head">
+              <div>
+                <span class="lb-mobile-panel-kicker">LUCKY BINGO</span>
+                <h2 id="mobile-panel-title">Player</h2>
+              </div>
+              <button type="button" class="lb-panel-close" id="close-mobile-panel" aria-label="Close panel">×</button>
+            </header>
+            <div class="lb-mobile-panel-content" id="mobile-panel-content"></div>
+          </section>
+        </div>
+
+        <div
+          class="lb-winner-overlay"
+          id="winner-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="winner-overlay-title"
+          aria-describedby="winner-overlay-message"
+          hidden
+        >
+          <div class="lb-winner-surface">
+            <div class="lb-winner-kicker" aria-hidden="true">ROUND RESULTS</div>
+            <h2 id="winner-overlay-title">WINNER</h2>
+            <div class="lb-winner-name" id="winner-overlay-name"></div>
+            <p class="lb-winner-message" id="winner-overlay-message"></p>
+            <div class="lb-winner-countdown" role="status" aria-live="polite">
+              <span>Returning to card selection in</span>
+              <strong><b id="winner-overlay-seconds">5</b><small>seconds</small></strong>
+            </div>
+          </div>
+        </div>
 
         <!-- WALLET: provider instructions and request forms -->
         <div class="lb-overlay" id="wallet-panel" hidden>
@@ -307,6 +420,6 @@
       </div>
     </div>
     <script src="card-data.js?v=2"></script>
-    <script src="game.js?v=2"></script>
+    <script src="game.js?v=3"></script>
   </body>
 </html>

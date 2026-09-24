@@ -2,6 +2,9 @@
 
 const ADMIN_STATE_KEY = "lucky-bingo-admin-state-v1";
 const ADMIN_SETTINGS_KEY = "lucky-bingo-admin-settings-v1";
+const ROOM_CATALOG_KEY = "lucky-bingo-room-catalog-v1";
+const ROOM_LIFECYCLE_KEY = "lucky-bingo-room-lifecycle-v1";
+const WINNING_PATTERN_OPTIONS = Object.freeze(["1", "2", "3", "4", "full-house"]);
 
 const $ = (id) => document.getElementById(id);
 
@@ -85,6 +88,7 @@ const DEFAULT_SETTINGS = {
   commission: 20,
   threshold: 10,
   countdown: 60,
+  winningPattern: "1",
   startingBonus: 50,
   startingBonusEnabled: true,
   autoCall: true,
@@ -109,27 +113,48 @@ function copy(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function loadRoomCatalog(legacyRooms = null) {
+  try {
+    const savedCatalog = JSON.parse(localStorage.getItem(ROOM_CATALOG_KEY) || "null");
+    if (Array.isArray(savedCatalog)) return savedCatalog;
+
+    if (Array.isArray(legacyRooms)) {
+      const migratedRooms = copy(legacyRooms);
+      localStorage.setItem(ROOM_CATALOG_KEY, JSON.stringify(migratedRooms));
+      return migratedRooms;
+    }
+  } catch (error) {
+    // Fall back to the legacy admin state or defaults when storage is unavailable.
+  }
+  return copy(DEFAULT_STATE.rooms);
+}
+
 function loadState() {
   try {
     const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "null");
-    if (!saved) return copy(DEFAULT_STATE);
+    if (!saved) return { ...copy(DEFAULT_STATE), rooms: loadRoomCatalog() };
     return {
       ...copy(DEFAULT_STATE),
       ...saved,
       metrics: { ...copy(DEFAULT_STATE.metrics), ...(saved.metrics || {}) },
-      rooms: Array.isArray(saved.rooms) ? saved.rooms : copy(DEFAULT_STATE.rooms),
+      rooms: loadRoomCatalog(saved.rooms),
       transactions: Array.isArray(saved.transactions) ? saved.transactions : copy(DEFAULT_STATE.transactions),
       players: Array.isArray(saved.players) ? saved.players : copy(DEFAULT_STATE.players),
       activities: Array.isArray(saved.activities) ? saved.activities : copy(DEFAULT_STATE.activities),
     };
   } catch (error) {
-    return copy(DEFAULT_STATE);
+    return { ...copy(DEFAULT_STATE), rooms: loadRoomCatalog() };
   }
 }
 
 function loadSettings() {
   try {
-    return { ...DEFAULT_SETTINGS, ...(JSON.parse(localStorage.getItem(ADMIN_SETTINGS_KEY) || "null") || {}) };
+    const saved = JSON.parse(localStorage.getItem(ADMIN_SETTINGS_KEY) || "null") || {};
+    const loaded = { ...DEFAULT_SETTINGS, ...saved };
+    loaded.winningPattern = WINNING_PATTERN_OPTIONS.includes(String(loaded.winningPattern))
+      ? String(loaded.winningPattern)
+      : DEFAULT_SETTINGS.winningPattern;
+    return loaded;
   } catch (error) {
     return { ...DEFAULT_SETTINGS };
   }
@@ -137,6 +162,7 @@ function loadSettings() {
 
 function saveState() {
   localStorage.setItem(ADMIN_STATE_KEY, JSON.stringify(state));
+  localStorage.setItem(ROOM_CATALOG_KEY, JSON.stringify(state.rooms));
 }
 
 function saveSettings() {
@@ -338,6 +364,7 @@ function addRoomFromForm(event) {
     status: "waiting",
     enabled: true,
     roundId: `#LB-${24090 + state.rooms.length + 1}`,
+    lifecycleVersion: 1,
     prizePool: stake * players,
     lastCall: "—",
     called: [],
@@ -354,14 +381,22 @@ function addRoomFromForm(event) {
   showToast(`${stake} ETB room added to the player lobby.`);
 }
 
+function clearRoomLifecycle(roomId) {
+  try {
+    const savedLifecycle = JSON.parse(localStorage.getItem(ROOM_LIFECYCLE_KEY) || "null");
+    if (!savedLifecycle || typeof savedLifecycle !== "object" || Array.isArray(savedLifecycle)) return;
+    delete savedLifecycle[String(roomId)];
+    localStorage.setItem(ROOM_LIFECYCLE_KEY, JSON.stringify(savedLifecycle));
+  } catch (error) {
+    // Room removal remains authoritative even if supplemental lifecycle storage is unavailable.
+  }
+}
+
 function removeRoom(roomId) {
   const room = state.rooms.find((item) => String(item.id) === String(roomId));
   if (!room) return;
-  if (room.status === "live") {
-    showToast("End the live round before removing this room.", "error");
-    return;
-  }
   state.rooms = state.rooms.filter((item) => String(item.id) !== String(roomId));
+  clearRoomLifecycle(roomId);
   if (String(selectedLiveRoomId) === String(roomId)) selectedLiveRoomId = state.rooms[0]?.id || "";
   addActivity(`Removed the ${room.stake} ETB room`, "game", "−");
   saveState();
@@ -428,6 +463,7 @@ function startNewRound(room = currentRoom()) {
   if (!room) return;
   const roundNumber = Number(String(room.roundId).replace(/\D/g, "")) || 24090;
   room.roundId = `#LB-${roundNumber + 1}`;
+  room.lifecycleVersion = Number(room.lifecycleVersion || 0) + 1;
   room.called = [];
   room.lastCall = "—";
   room.status = "live";
@@ -456,6 +492,7 @@ function toggleRound() {
 function endRound() {
   const room = currentRoom();
   if (!room) return;
+  room.lifecycleVersion = Number(room.lifecycleVersion || 0) + 1;
   room.status = "waiting";
   addActivity(`Ended ${room.roundId} in the ${room.stake} ETB room`, "game", "■");
   saveState();
@@ -684,6 +721,7 @@ function bindSettings() {
     "setting-commission": "commission",
     "setting-threshold": "threshold",
     "setting-countdown": "countdown",
+    "setting-winning-pattern": "winningPattern",
     "setting-starting-bonus": "startingBonus",
     "setting-starting-bonus-enabled": "startingBonusEnabled",
     "setting-autocall": "autoCall",
@@ -700,6 +738,7 @@ function bindSettings() {
     input.addEventListener("change", () => {
       settings[key] = input.type === "checkbox" ? input.checked : input.value;
       if (input.type === "number") settings[key] = Number(input.value);
+      if (key === "winningPattern") settings[key] = WINNING_PATTERN_OPTIONS.includes(settings[key]) ? settings[key] : DEFAULT_SETTINGS.winningPattern;
       if (key === "countdown") settings[key] = Math.min(600, Math.max(10, Math.round(settings[key] || 60)));
       if (key === "startingBonus") settings[key] = Math.min(100000, Math.max(0, Math.round(settings[key] || 0)));
       saveSettings();

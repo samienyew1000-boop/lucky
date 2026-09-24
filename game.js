@@ -4,15 +4,19 @@ const BALANCE_KEY = "lucky-bingo-balance";
 const STARTING_BONUS_CLAIMED_KEY = "lucky-bingo-starting-bonus-claimed";
 const ADMIN_STATE_KEY = "lucky-bingo-admin-state-v1";
 const ADMIN_SETTINGS_KEY = "lucky-bingo-admin-settings-v1";
+const ROOM_CATALOG_KEY = "lucky-bingo-room-catalog-v1";
 const ROOM_LIFECYCLE_KEY = "lucky-bingo-room-lifecycle-v1";
 const LAST_WINNING_CARDS_KEY = "lucky-bingo-last-winning-cards-v1";
 const CARD_DATA_URL = "card%20number.json";
 const START_BALANCE = 0;
 const DEFAULT_STARTING_BONUS = 50;
 const CARD_COUNT = 1000;
-const MAX_PICK = 4;
+const MAX_PICK = 2;
 const CALL_MS = 1600;
 const DEFAULT_PICK_SECS = 60;
+const DEFAULT_WINNING_PATTERN = "1";
+const WINNING_PATTERNS = Object.freeze(["1", "2", "3", "4", "full-house"]);
+const ROOM_GAME_MS = CALL_MS * 75;
 const ROOM_UPDATE_MS = 2400;
 const ROOM_STATUS_UPDATE_MS = 1000;
 const COMMISSION_RATE = 0.2;
@@ -26,9 +30,9 @@ const PAYMENT_METHODS = Object.freeze({
 });
 
 const ROOMS = [
-  { id: "10", stake: 10, players: 98, status: "waiting" },
-  { id: "20", stake: 20, players: 106, status: "waiting" },
-  { id: "50", stake: 50, players: 86, status: "waiting" },
+  { id: "10", stake: 10, players: 304, status: "live" },
+  { id: "20", stake: 20, players: 1030, status: "live" },
+  { id: "25", stake: 25, players: 0, status: "live" },
 ];
 
 const DEFAULT_LAST_WINNING_CARDS = Object.freeze([
@@ -37,6 +41,7 @@ const DEFAULT_LAST_WINNING_CARDS = Object.freeze([
   { cardId: 230, name: "Yilma Mamo", stake: 5, prize: 362 },
   { cardId: 268, name: "Abraha", stake: 5, prize: 362 },
 ]);
+const BOT_WINNER_NAMES = Object.freeze(DEFAULT_LAST_WINNING_CARDS.map((winner) => winner.name));
 
 const LETTERS = ["B", "I", "N", "G", "O"];
 const COL_RANGES = [
@@ -60,6 +65,7 @@ let stake = 10;
 let selected = new Set();
 let selectedPreviewId = null;
 let takenByOthers = new Set();
+let mobilePanelTab = "game";
 let cardDefs = {};
 let cardNumbers = [];
 let cardsReady = false;
@@ -70,12 +76,14 @@ let autoMarkingEnabled = true;
 let callPool = [];
 let callTimer = null;
 let pickTimer = null;
+let winnerTimer = null;
 let roomTimer = null;
 let roomStatusTimer = null;
 let roomLifecycle = loadRoomLifecycle();
 let lastWinningCards = loadLastWinningCards();
 let activeRoomId = null;
 let pickLeft = DEFAULT_PICK_SECS;
+let pickEndsAt = 0;
 let playing = false;
 let gameWaiting = false;
 let entryCharged = false;
@@ -125,6 +133,20 @@ function getPickCountdownSeconds() {
     return Number.isFinite(seconds) ? Math.min(600, Math.max(10, Math.round(seconds))) : DEFAULT_PICK_SECS;
   } catch (error) {
     return DEFAULT_PICK_SECS;
+  }
+}
+
+function normalizeWinningPattern(value) {
+  const pattern = String(value ?? DEFAULT_WINNING_PATTERN);
+  return WINNING_PATTERNS.includes(pattern) ? pattern : DEFAULT_WINNING_PATTERN;
+}
+
+function getWinningPattern() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_SETTINGS_KEY) || "null");
+    return normalizeWinningPattern(saved?.winningPattern);
+  } catch (error) {
+    return DEFAULT_WINNING_PATTERN;
   }
 }
 
@@ -185,11 +207,19 @@ function rememberWinningCard(stakeValue, cardId, name, prize) {
 
 function loadAdminRooms() {
   try {
-    const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "null");
-    return saved && Array.isArray(saved.rooms) ? saved.rooms : null;
+    const savedCatalog = JSON.parse(localStorage.getItem(ROOM_CATALOG_KEY) || "null");
+    if (Array.isArray(savedCatalog)) return savedCatalog;
+
+    const savedState = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "null");
+    const legacyRooms = savedState && Array.isArray(savedState.rooms) ? savedState.rooms : null;
+    if (legacyRooms) {
+      localStorage.setItem(ROOM_CATALOG_KEY, JSON.stringify(legacyRooms));
+      return legacyRooms;
+    }
   } catch (error) {
-    return null;
+    // Fall back to the built-in lobby rooms when storage is unavailable.
   }
+  return null;
 }
 
 function savePlayerRoomPlayers(roomId, players) {
@@ -199,6 +229,7 @@ function savePlayerRoomPlayers(roomId, players) {
   if (!room) return;
   room.players = players;
   try {
+    localStorage.setItem(ROOM_CATALOG_KEY, JSON.stringify(adminRooms));
     const savedState = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "{}");
     localStorage.setItem(ADMIN_STATE_KEY, JSON.stringify({ ...savedState, rooms: adminRooms }));
   } catch (error) {
@@ -234,54 +265,118 @@ function roomSourceStatus(room) {
   return room.status || "waiting";
 }
 
+function roomRoundKey(room) {
+  return `${roomSourceStatus(room)}:${String(room.roundId || "")}:${String(room.lifecycleVersion || 0)}`;
+}
+
+function roomLifecycleKey(roundKey, cycle) {
+  return `${roundKey}:${cycle}`;
+}
+
+function createRoomCountdown(room, now = Date.now(), previousLifecycle = null) {
+  const roundId = String(room.roundId || "");
+  const roundKey = roomRoundKey(room);
+  const cycle = Number(previousLifecycle?.cycle || 0) + 1;
+  const lifecycle = {
+    sourceStatus: "waiting",
+    roundId,
+    roundKey,
+    lifecycleKey: roomLifecycleKey(roundKey, cycle),
+    phase: "countdown",
+    startsAt: now + getPickCountdownSeconds() * 1000,
+    cycle,
+  };
+  roomLifecycle[String(room.id)] = lifecycle;
+  saveRoomLifecycle();
+  return lifecycle;
+}
+
 function roomDisplayState(room, now = Date.now()) {
   const sourceStatus = roomSourceStatus(room);
   const roundId = String(room.roundId || "");
-  let lifecycle = roomLifecycle[room.id];
+  const roundKey = roomRoundKey(room);
+  const roomKey = String(room.id);
+  let lifecycle = roomLifecycle[roomKey];
 
   if (sourceStatus === "live") {
-    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundId !== roundId || lifecycle.phase !== "live") {
-      lifecycle = { sourceStatus, roundId, phase: "live", startedAt: now };
-      roomLifecycle[room.id] = lifecycle;
+    const lifecycleKey = roomLifecycleKey(roundKey, "admin");
+    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundKey !== roundKey || lifecycle.phase !== "live" || lifecycle.lifecycleKey !== lifecycleKey) {
+      lifecycle = {
+        sourceStatus,
+        roundId,
+        roundKey,
+        lifecycleKey,
+        phase: "live",
+        startedAt: now,
+        adminControlled: true,
+      };
+      roomLifecycle[roomKey] = lifecycle;
       saveRoomLifecycle();
     }
-    return { type: "live", label: "Active game", ariaLabel: "Active game" };
+    return { type: "live", label: "Active game", ariaLabel: "Active game", roundKey: lifecycle.lifecycleKey };
   }
 
   if (sourceStatus === "paused") {
-    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundId !== roundId || lifecycle.phase !== "paused") {
-      lifecycle = { sourceStatus, roundId, phase: "paused", updatedAt: now };
-      roomLifecycle[room.id] = lifecycle;
+    const lifecycleKey = roomLifecycleKey(roundKey, "admin");
+    if (!lifecycle || lifecycle.sourceStatus !== sourceStatus || lifecycle.roundKey !== roundKey || lifecycle.phase !== "paused" || lifecycle.lifecycleKey !== lifecycleKey) {
+      lifecycle = { sourceStatus, roundId, roundKey, lifecycleKey, phase: "paused", updatedAt: now };
+      roomLifecycle[roomKey] = lifecycle;
       saveRoomLifecycle();
     }
-    return { type: "paused", label: "Paused", ariaLabel: "Game paused" };
+    return { type: "paused", label: "Paused", ariaLabel: "Game paused", roundKey: lifecycle.lifecycleKey };
   }
 
   if (
     !lifecycle ||
     lifecycle.sourceStatus !== sourceStatus ||
-    lifecycle.roundId !== roundId ||
+    lifecycle.roundKey !== roundKey ||
     !["countdown", "live"].includes(lifecycle.phase) ||
+    !lifecycle.lifecycleKey ||
+    !Number.isFinite(Number(lifecycle.cycle)) ||
     (lifecycle.phase === "countdown" && !Number.isFinite(Number(lifecycle.startsAt)))
   ) {
-    lifecycle = {
-      sourceStatus,
-      roundId,
-      phase: "countdown",
-      startsAt: now + getPickCountdownSeconds() * 1000,
-    };
-    roomLifecycle[room.id] = lifecycle;
-    saveRoomLifecycle();
+    lifecycle = createRoomCountdown(room, now, lifecycle);
   }
 
   if (lifecycle.phase === "countdown" && now >= Number(lifecycle.startsAt)) {
-    lifecycle = { sourceStatus, roundId, phase: "live", startedAt: now };
-    roomLifecycle[room.id] = lifecycle;
+    const startedAt = now;
+    lifecycle = {
+      sourceStatus,
+      roundId,
+      roundKey,
+      lifecycleKey: lifecycle.lifecycleKey,
+      phase: "live",
+      startedAt,
+      endsAt: startedAt + ROOM_GAME_MS,
+      cycle: Number(lifecycle.cycle || 0),
+    };
+    roomLifecycle[roomKey] = lifecycle;
     saveRoomLifecycle();
   }
 
   if (lifecycle.phase === "live") {
-    return { type: "live", label: "Active game", ariaLabel: "Active game" };
+    // Waiting rooms run their own simulated round. Admin-controlled live rooms
+    // stay locked until the admin changes their source status.
+    if (lifecycle.adminControlled) {
+      return { type: "live", label: "Active game", ariaLabel: "Active game", roundKey: lifecycle.lifecycleKey };
+    }
+
+    if (!Number.isFinite(Number(lifecycle.endsAt))) {
+      const startedAt = Number.isFinite(Number(lifecycle.startedAt)) ? Number(lifecycle.startedAt) : now;
+      lifecycle = {
+        ...lifecycle,
+        startedAt,
+        endsAt: startedAt + ROOM_GAME_MS,
+      };
+      roomLifecycle[roomKey] = lifecycle;
+      saveRoomLifecycle();
+    }
+
+    if (now >= Number(lifecycle.endsAt)) {
+      lifecycle = createRoomCountdown(room, now, lifecycle);
+    } else {
+      return { type: "live", label: "Active game", ariaLabel: "Active game", roundKey: lifecycle.lifecycleKey };
+    }
   }
 
   const seconds = Math.max(0, Math.ceil((Number(lifecycle.startsAt) - now) / 1000));
@@ -289,7 +384,15 @@ function roomDisplayState(room, now = Date.now()) {
     type: "countdown",
     label: formatCountdown(seconds),
     ariaLabel: `Game starts in ${formatCountdown(seconds)}`,
+    startsAt: Number(lifecycle.startsAt),
+    roundKey: lifecycle.lifecycleKey,
   };
+}
+
+function scheduleRoomCountdown(roomId, now = Date.now()) {
+  const room = getLobbyRoom(roomId);
+  if (!room || roomSourceStatus(room) !== "waiting") return null;
+  return createRoomCountdown(room, now, roomLifecycle[String(room.id)]);
 }
 
 function saveBalance() {
@@ -334,6 +437,9 @@ function letterFor(n) {
 
 function showView(name) {
   Object.entries(views).forEach(([key, el]) => el.classList.toggle("is-on", key === name));
+  document.body.classList.toggle("is-selection-active", name === "pick");
+  document.body.classList.toggle("is-game-active", name === "game");
+  document.body.classList.toggle("is-lobby-active", name === "lobby");
   if (name === "lobby") {
     startRoomUpdates();
     startRoomStatusUpdates();
@@ -341,6 +447,279 @@ function showView(name) {
     stopRoomUpdates();
     stopRoomStatusUpdates();
   }
+}
+
+function mobileNavLabel(tab) {
+  return ({
+    game: "Game",
+    history: "History",
+    profile: "Profile",
+    deposit: "Deposit",
+    settings: "Settings",
+  })[tab] || "Player";
+}
+
+let historyFilter = "all";
+
+function recordPlayerTransaction(data) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "{}");
+    const transactions = Array.isArray(saved.transactions) ? saved.transactions : [];
+    const txn = {
+      id: makeTransactionId(),
+      playerId: PLAYER_ID,
+      player: PLAYER_NAME,
+      type: data.type || "stake",
+      method: data.method || "Game Stake",
+      amount: Number(data.amount) || 0,
+      requested: data.requested || "Just now",
+      status: data.status || "completed",
+      details: data.details || "",
+    };
+    saved.transactions = [txn, ...transactions].slice(0, 100);
+    localStorage.setItem(ADMIN_STATE_KEY, JSON.stringify(saved));
+    return txn;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getStoredTransactions() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(ADMIN_STATE_KEY) || "{}");
+    const transactions = Array.isArray(saved.transactions) ? saved.transactions : [];
+    if (!transactions.length) {
+      return [
+        {
+          id: "TX-1001",
+          playerId: PLAYER_ID,
+          player: PLAYER_NAME,
+          type: "bonus",
+          method: "Welcome Bonus",
+          amount: 50,
+          requested: "Today",
+          status: "completed",
+          details: "Starting balance credit",
+        },
+      ];
+    }
+    return transactions;
+  } catch (error) {
+    return [];
+  }
+}
+
+function renderMobilePanelContent(tab) {
+  const content = $("mobile-panel-content");
+  if (!content) return;
+
+  if (tab === "history") {
+    const all = getStoredTransactions();
+    const filtered = all.filter((item) => {
+      if (historyFilter === "deposit") return item.type === "deposit" || item.type === "bonus";
+      if (historyFilter === "withdraw") return item.type === "withdraw";
+      if (historyFilter === "game") return item.type === "stake" || item.type === "win";
+      return true;
+    });
+
+    const totalIn = all
+      .filter((item) => (item.type === "deposit" || item.type === "bonus" || item.type === "win") && item.status !== "rejected")
+      .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    const totalOut = all
+      .filter((item) => (item.type === "withdraw" || item.type === "stake") && item.status !== "rejected")
+      .reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+    content.innerHTML = `
+      <div class="lb-history-summary">
+        <div class="lb-history-summary-card">
+          <span>Balance</span>
+          <strong class="is-positive">${Number(balance).toFixed(2)} ETB</strong>
+        </div>
+        <div class="lb-history-summary-card">
+          <span>Total In</span>
+          <strong class="is-positive">+${fmt(totalIn)} ETB</strong>
+        </div>
+        <div class="lb-history-summary-card">
+          <span>Total Out</span>
+          <strong>-${fmt(totalOut)} ETB</strong>
+        </div>
+      </div>
+
+      <div class="lb-history-filters" role="tablist" aria-label="Transaction filters">
+        <button type="button" class="lb-history-filter-btn ${historyFilter === "all" ? "is-active" : ""}" data-history-filter="all">All</button>
+        <button type="button" class="lb-history-filter-btn ${historyFilter === "deposit" ? "is-active" : ""}" data-history-filter="deposit">Deposits</button>
+        <button type="button" class="lb-history-filter-btn ${historyFilter === "withdraw" ? "is-active" : ""}" data-history-filter="withdraw">Withdrawals</button>
+        <button type="button" class="lb-history-filter-btn ${historyFilter === "game" ? "is-active" : ""}" data-history-filter="game">Games</button>
+      </div>
+
+      ${filtered.length ? `
+        <div class="lb-mobile-history-list">
+          ${filtered.map((item) => {
+            const isPos = item.type === "deposit" || item.type === "bonus" || item.type === "win";
+            const iconChar = item.type === "deposit" ? "↓" : item.type === "withdraw" ? "↑" : item.type === "win" ? "★" : item.type === "bonus" ? "🎁" : "▦";
+            const iconClass = `is-${item.type || "stake"}`;
+            const title = item.method || (item.type === "withdraw" ? "Withdrawal" : item.type === "deposit" ? "Deposit" : item.type === "win" ? "Bingo Win" : "Game Stake");
+            const sub = item.details || item.reference || (item.phone ? `To: ${item.phone}` : "");
+            const dateStr = item.requested || "recently";
+            const statusClass = `is-${(item.status || "completed").toLowerCase()}`;
+
+            return `
+              <article class="lb-mobile-history-item">
+                <span class="lb-mobile-history-icon ${iconClass}">${iconChar}</span>
+                <div class="lb-mobile-history-details">
+                  <strong>${escapeHTML(title)}</strong>
+                  <small>${escapeHTML(dateStr)}${sub ? ` · ${escapeHTML(sub)}` : ""}</small>
+                </div>
+                <div class="lb-mobile-history-right">
+                  <b class="${isPos ? "is-positive" : "is-negative"}">${isPos ? "+" : "-"}${fmt(Number(item.amount) || 0)} ETB</b>
+                  <span class="lb-mobile-history-status ${statusClass}">${escapeHTML(item.status || "completed")}</span>
+                </div>
+              </article>
+            `;
+          }).join("")}
+        </div>
+      ` : `
+        <div class="lb-mobile-empty-state">
+          <span class="lb-mobile-empty-icon">◷</span>
+          <strong>No transactions found</strong>
+          <p>No transactions match the selected filter.</p>
+        </div>
+      `}
+    `;
+
+    content.querySelectorAll("[data-history-filter]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        historyFilter = btn.dataset.historyFilter;
+        renderMobilePanelContent("history");
+      });
+    });
+    return;
+  }
+
+  if (tab === "profile") {
+    content.innerHTML = `
+      <div class="lb-mobile-profile-card">
+        <div class="lb-mobile-avatar">LB</div>
+        <div>
+          <strong>${escapeHTML(PLAYER_NAME)}</strong>
+          <span>${PLAYER_ID}</span>
+        </div>
+      </div>
+      <div class="lb-mobile-info-list">
+        <div><span>Available Balance</span><b class="is-positive">${Number(balance).toFixed(2)} ETB</b></div>
+        <div><span>Current Stake</span><b>${stake} ETB</b></div>
+        <div><span>Cards per round</span><b>Up to ${MAX_PICK} cards</b></div>
+        <div><span>Account Status</span><b class="is-positive">Active</b></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;">
+        <button type="button" class="lb-mobile-action-button" id="profile-deposit-btn">Deposit Funds</button>
+        <button type="button" class="lb-mobile-action-button" style="background:#2a2638;color:#ddd;" id="profile-withdraw-btn">Withdraw</button>
+      </div>
+    `;
+    $("profile-deposit-btn")?.addEventListener("click", () => {
+      closeMobilePanel();
+      openWallet("deposit");
+    });
+    $("profile-withdraw-btn")?.addEventListener("click", () => {
+      closeMobilePanel();
+      openWallet("withdraw");
+    });
+    return;
+  }
+
+  if (tab === "deposit") {
+    content.innerHTML = `
+      <div class="lb-mobile-action-card">
+        <div>
+          <strong style="font-size:16px;">Lucky Bingo Wallet</strong>
+          <p>Top up your balance instantly using mobile money (Telebirr, CBE Birr, M-Pesa).</p>
+        </div>
+        <div class="lb-mobile-info-list" style="margin:0;">
+          <div><span>Current Balance</span><b class="is-positive">${Number(balance).toFixed(2)} ETB</b></div>
+          <div><span>Minimum Deposit</span><b>50 ETB</b></div>
+        </div>
+        <button type="button" class="lb-mobile-action-button" id="mobile-open-wallet">Proceed to Deposit</button>
+      </div>
+    `;
+    $("mobile-open-wallet")?.addEventListener("click", () => {
+      closeMobilePanel();
+      openWallet("deposit");
+    });
+    return;
+  }
+
+  if (tab === "settings") {
+    content.innerHTML = `
+      <div class="lb-mobile-info-list">
+        <div>
+          <span>Auto-mark cards</span>
+          <label class="lb-mobile-switch">
+            <input type="checkbox" ${autoMarkingEnabled ? "checked" : ""} id="mobile-auto-mark" />
+            <i></i>
+          </label>
+        </div>
+        <div>
+          <span>Sound effects</span>
+          <label class="lb-mobile-switch">
+            <input type="checkbox" checked id="mobile-sound-toggle" />
+            <i></i>
+          </label>
+        </div>
+        <div>
+          <span>Theme</span>
+          <b>Midnight Black</b>
+        </div>
+        <div>
+          <span>Language</span>
+          <b>English / አማርኛ</b>
+        </div>
+      </div>
+    `;
+    $("mobile-auto-mark")?.addEventListener("change", (event) => setAutoMarking(event.currentTarget.checked, true));
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="lb-mobile-empty-state lb-mobile-game-state">
+      <span class="lb-mobile-empty-icon">▦</span>
+      <strong>Select up to 2 cards</strong>
+      <p>Choose up to 2 available cards to hold. When countdown finishes, round starts automatically.</p>
+    </div>
+  `;
+}
+
+function openMobilePanel(tab) {
+  mobilePanelTab = tab;
+  const panel = $("mobile-panel");
+  const title = $("mobile-panel-title");
+  if (!panel || !title) return;
+  title.textContent = mobileNavLabel(tab);
+  renderMobilePanelContent(tab);
+  panel.hidden = false;
+}
+
+function closeMobilePanel() {
+  const panel = $("mobile-panel");
+  if (panel) panel.hidden = true;
+  setMobileNavState("game");
+}
+
+function setMobileNavState(tab) {
+  document.querySelectorAll("[data-mobile-nav]").forEach((button) => {
+    const active = button.dataset.mobileNav === tab;
+    button.classList.toggle("is-active", active);
+    if (active) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
+  });
+}
+
+function handleMobileNav(tab) {
+  setMobileNavState(tab);
+  if (tab === "game") {
+    closeMobilePanel();
+    return;
+  }
+  openMobilePanel(tab);
 }
 
 function toast(text, kind) {
@@ -355,6 +734,8 @@ function toast(text, kind) {
 function renderBalance() {
   const lobbyBalance = $("balance");
   if (lobbyBalance) lobbyBalance.textContent = fmtBal(balance);
+  const pickBalance = $("pick-balance");
+  if (pickBalance) pickBalance.textContent = `${Number(balance).toFixed(2)} ETB`;
   updateWalletBalances();
   renderRooms();
 }
@@ -440,12 +821,18 @@ function renderPickRoomSummary() {
   const availableEl = $("pick-available");
   const time = $("pick-time");
   const bannerSeconds = $("pick-banner-secs");
+  const pickBalance = $("pick-balance");
+  const pickStake = $("pick-stake");
 
   if (title) title.textContent = `${roomStake} birr Game Lobby`;
   if (entry) entry.textContent = `${roomStake} ETB`;
+  if (pickStake) pickStake.textContent = `${roomStake} ETB`;
   if (players) players.textContent = room ? fmt(playerCount) : "—";
   if (availableEl) availableEl.textContent = cardNumbers.length ? fmt(available) : "—";
-  if (time) time.textContent = formatCountdown(pickLeft);
+  if (time) time.textContent = `${Math.max(0, pickLeft)}s`;
+  const reservedStake = selected.size * roomStake;
+  const availableBal = Math.max(0, balance - reservedStake);
+  if (pickBalance) pickBalance.textContent = `${availableBal.toFixed(2)} ETB`;
   if (bannerSeconds) bannerSeconds.textContent = formatCountdown(pickLeft);
 }
 
@@ -462,16 +849,18 @@ function renderWinningCards() {
 }
 
 function updateGameWaiting() {
-  const countdown = $("game-waiting-countdown");
-  const seconds = $("game-waiting-secs");
+  const statusPill = $("game-live-status");
+  const liveLabel = $("game-live-label");
   const status = $("game-status");
-  if (countdown) {
-    countdown.hidden = !gameWaiting;
-    countdown.classList.toggle("is-urgent", gameWaiting && pickLeft <= 10);
+  const countdownLabel = formatCountdown(pickLeft);
+
+  if (statusPill) {
+    statusPill.classList.toggle("is-countdown", gameWaiting);
+    statusPill.setAttribute("aria-label", gameWaiting ? `Game starts in ${countdownLabel}` : "Live game");
   }
-  if (seconds && gameWaiting) seconds.textContent = formatCountdown(pickLeft);
+  if (liveLabel) liveLabel.textContent = gameWaiting ? countdownLabel : "LIVE";
   if (!gameWaiting) return;
-  if (status) status.textContent = `Game starts in ${formatCountdown(pickLeft)}`;
+  if (status) status.textContent = `Game starts in ${countdownLabel}`;
   updateGameSummary();
 }
 
@@ -498,7 +887,9 @@ function updateRecentCalls() {
     ...called.slice(-3).reverse().map((number) => {
       const item = document.createElement("span");
       item.className = "lb-recent-call";
-      item.innerHTML = `<b>${letterFor(number)}</b><i>${number}</i>`;
+      const letter = letterFor(number);
+      item.dataset.letter = letter;
+      item.innerHTML = `<b>${letter}</b><i>${number}</i>`;
       return item;
     })
   );
@@ -507,39 +898,8 @@ function updateRecentCalls() {
   if (letter) letter.textContent = latest ? letterFor(latest) : "—";
 }
 
-function selectedCardNumbersText() {
-  const ids = [...selected].map((id) => String(id));
-  return ids.length ? ids.join(", ") : "—";
-}
-
-function selectedCardLabelText() {
-  const numbers = selectedCardNumbersText();
-  return numbers === "—" ? numbers : `CARD ${numbers}`;
-}
-
 function activeHitSet() {
   return autoMarkingEnabled ? new Set(called) : new Set(manualMarked);
-}
-
-function updateHeldCardPanel() {
-  const panel = $("no-card-panel");
-  const title = $("no-card-title");
-  const message = $("no-card-message");
-  const note = $("no-card-note");
-  const dots = $("no-card-dots");
-  const hasHeldCard = selected.size > 0;
-
-  if (panel) panel.classList.toggle("has-held-card", hasHeldCard);
-  if (title) title.textContent = hasHeldCard ? selectedCardLabelText() : "ካርድ ይያዙ";
-  if (message) {
-    message.hidden = hasHeldCard;
-    message.textContent = "በፍጥነት ተጫወቱ:: ይህ ካርድ ለመጫወት ይጠበቃል";
-  }
-  if (note) {
-    note.hidden = hasHeldCard;
-    note.textContent = "ደስታ ይሁን::";
-  }
-  if (dots) dots.hidden = hasHeldCard;
 }
 
 function updateBingoButton() {
@@ -708,13 +1068,13 @@ function enterRoom(roomId) {
   botPlayers = 8 + Math.floor(Math.random() * 16);
   setGameWaitingState(false);
   showView("pick");
-  $("pick-stake").textContent = String(stake);
+  $("pick-stake").textContent = `${stake} ETB`;
   $("pick-cost").textContent = String(stake);
   renderWinningCards();
   updatePickInfo();
   buildCardGrid();
   renderCartelaPreview();
-  startPickCountdown();
+  startPickCountdown(state.startsAt, state.roundKey);
   simulateOthersPicking();
 }
 
@@ -770,38 +1130,49 @@ function paintPicks() {
   });
 }
 
-function renderCartelaPreview() {
-  const preview = $("cartela-preview");
-  const empty = $("cartela-empty");
-  if (!preview || !empty) return;
-  preview.querySelectorAll(".lb-cartela-card").forEach((card) => card.remove());
-
-  if (selectedPreviewId === null) {
-    empty.hidden = false;
-    return;
-  }
-
-  const card = ensureCard(selectedPreviewId);
-  if (!card) {
-    empty.hidden = false;
-    return;
-  }
-  empty.hidden = true;
-  const cardEl = document.createElement("div");
-  cardEl.className = "lb-cartela-card";
+function createSelectionCard(card, removable = true) {
+  const cardEl = document.createElement("article");
+  cardEl.className = "lb-selection-card";
+  cardEl.dataset.id = String(card.id);
   cardEl.innerHTML = `
-    <div class="lb-cartela-number">Card #${card.id}</div>
-    <div class="lb-cartela-head">${LETTERS.map((letter) => `<span>${letter}</span>`).join("")}</div>
-    <div class="lb-cartela-cells"></div>
+    <div class="lb-selection-card-title">Card #${card.id}</div>
+    ${removable ? `<button type="button" class="lb-selection-remove" data-remove-card="${card.id}" aria-label="Remove card ${card.id}">×</button>` : ""}
+    <div class="lb-selection-bingo-head">${LETTERS.map((letter) => `<span>${letter}</span>`).join("")}</div>
+    <div class="lb-selection-cells"></div>
   `;
-  const cells = cardEl.querySelector(".lb-cartela-cells");
+  const cells = cardEl.querySelector(".lb-selection-cells");
   card.cells.forEach((value) => {
     const cell = document.createElement("span");
-    cell.className = "lb-cartela-cell" + (value === "FREE" ? " is-free" : "");
-    cell.textContent = value === "FREE" ? "X" : String(value);
+    cell.className = "lb-selection-cell" + (value === "FREE" ? " is-free" : "");
+    cell.textContent = value === "FREE" ? "★" : String(value);
     cells.appendChild(cell);
   });
-  preview.appendChild(cardEl);
+  cardEl.querySelector("[data-remove-card]")?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    toggleCard(Number(event.currentTarget.dataset.removeCard));
+  });
+  cardEl.addEventListener("click", () => previewCard(card.id));
+  return cardEl;
+}
+
+function renderCartelaPreview() {
+  const preview = $("cartela-preview");
+  if (!preview) return;
+  preview.replaceChildren();
+  if (!selected.size) {
+    preview.innerHTML = `<div class="lb-selection-slot is-empty"><span>Select Card 1</span></div><div class="lb-selection-slot is-empty"><span>Select Card 2</span></div>`;
+    return;
+  }
+  [...selected].slice(0, MAX_PICK).forEach((id) => {
+    const card = ensureCard(id);
+    if (card) preview.appendChild(createSelectionCard(card));
+  });
+  while (preview.children.length < MAX_PICK) {
+    const slot = document.createElement("div");
+    slot.className = "lb-selection-slot is-empty";
+    slot.innerHTML = `<span>Select Card ${preview.children.length + 1}</span>`;
+    preview.appendChild(slot);
+  }
 }
 
 function previewCard(id) {
@@ -821,6 +1192,10 @@ function toggleCard(id) {
     selected.delete(id);
     if (selectedPreviewId === id) selectedPreviewId = selected.size ? [...selected][selected.size - 1] : null;
   } else {
+    if (selected.size >= MAX_PICK) {
+      toast(`MAXIMUM ${MAX_PICK} CARDS`, "lose");
+      return;
+    }
     if (selected.size >= Math.min(MAX_PICK, Math.floor(balance / stake))) {
       toast("NOT ENOUGH BALANCE", "lose");
       return;
@@ -879,27 +1254,51 @@ function updatePickCountdownDisplay() {
   updateGameWaiting();
 }
 
-function startPickCountdown() {
+function startPickCountdown(roomStartsAt = null, roomRoundKey = null) {
   clearInterval(pickTimer);
-  pickLeft = getPickCountdownSeconds();
-  updatePickCountdownDisplay();
-  updatePickInfo();
-  pickTimer = setInterval(() => {
-    pickLeft -= 1;
+  // Keep the countdown tied to the room round that was opened. If another
+  // room changes state while this page is open, this timer must not start it.
+  pickTimer = null;
+
+  const room = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+  const roomState = room ? roomDisplayState(room) : null;
+  const suppliedStart = Number(roomStartsAt);
+  const roomStart = Number(roomState?.startsAt);
+  pickEndsAt = Number.isFinite(suppliedStart)
+    ? suppliedStart
+    : Number.isFinite(roomStart)
+      ? roomStart
+      : Date.now() + getPickCountdownSeconds() * 1000;
+
+  const tick = () => {
+    const currentRoom = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+    const currentState = currentRoom ? roomDisplayState(currentRoom) : null;
+    if (roomRoundKey && currentState && currentState.roundKey !== roomRoundKey) {
+      clearInterval(pickTimer);
+      pickTimer = null;
+      pickEndsAt = 0;
+      return;
+    }
+    pickLeft = Math.max(0, Math.ceil((pickEndsAt - Date.now()) / 1000));
     updatePickCountdownDisplay();
     updatePickInfo();
-    if (pickLeft <= 0) {
-      clearInterval(pickTimer);
-      if (selected.size > 0) {
-        if (gameWaiting) beginLiveGame();
-        else startGame();
-      } else {
-        toast("NO CARD SELECTED", "lose");
-        activeRoomId = null;
-        showView("lobby");
-      }
+    if (pickLeft > 0) return;
+
+    clearInterval(pickTimer);
+    pickTimer = null;
+    pickEndsAt = 0;
+    if (selected.size > 0) {
+      if (gameWaiting) beginLiveGame();
+      else startGame();
+    } else {
+      toast("NO CARD SELECTED", "lose");
+      activeRoomId = null;
+      showView("lobby");
     }
-  }, 1000);
+  };
+
+  tick();
+  if (pickLeft > 0) pickTimer = setInterval(tick, 250);
 }
 
 function simulateOthersPicking() {
@@ -928,6 +1327,24 @@ function startGame() {
     return;
   }
 
+  const room = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+  if (room) {
+    const sourceStatus = roomSourceStatus(room);
+    if ((sourceStatus === "live" || sourceStatus === "paused") && pickLeft > 0) {
+      toast(sourceStatus === "live" ? "ROUND IN PROGRESS" : "ROOM CLOSED", "lose");
+      activeRoomId = null;
+      showView("lobby");
+      renderRooms();
+      return;
+    }
+    const state = roomDisplayState(room);
+    if (state.type === "live" && sourceStatus === "waiting") {
+      pickLeft = 0;
+      updatePickCountdownDisplay();
+      updatePickInfo();
+    }
+  }
+
   const cost = stake * selected.size;
   if (cost > balance) {
     toast("NOT ENOUGH BALANCE", "lose");
@@ -939,6 +1356,14 @@ function startGame() {
   entryCharged = true;
   saveBalance();
   renderBalance();
+  recordPlayerTransaction({
+    type: "stake",
+    method: `${stake} ETB Room Stake`,
+    amount: cost,
+    status: "completed",
+    details: `${selected.size} cartela${selected.size > 1 ? "s" : ""} · ${stake} birr room`,
+  });
+  hideWinnerOverlay();
   hideRoundResult();
   called = [];
   manualMarked = new Set();
@@ -1006,6 +1431,104 @@ function hideRoundResult() {
   result.replaceChildren();
 }
 
+function hideWinnerOverlay() {
+  clearInterval(winnerTimer);
+  winnerTimer = null;
+  const overlay = $("winner-overlay");
+  if (!overlay) return;
+  overlay.hidden = true;
+  overlay.className = "lb-winner-overlay";
+}
+
+function returnToCardSelection() {
+  const roomId = activeRoomId;
+  const room = roomId ? getLobbyRoom(roomId) : null;
+  hideWinnerOverlay();
+  clearInterval(callTimer);
+  clearInterval(pickTimer);
+  pickEndsAt = 0;
+  stopRoomUpdates();
+  stopRoomStatusUpdates();
+  playing = false;
+  gameWaiting = false;
+  entryCharged = false;
+  manualMarked = new Set();
+  claimed = false;
+  roundOutcome = null;
+  roundWinnerName = "";
+  roundWinKind = "";
+  roundWinCardId = null;
+  selected = new Set();
+  selectedPreviewId = null;
+  takenByOthers = new Set();
+  hideRoundResult();
+
+  if (!room) {
+    activeRoomId = null;
+    setGameWaitingState(false);
+    showView("lobby");
+    renderRooms();
+    return;
+  }
+
+  const roomState = roomDisplayState(room);
+  if (roomState.type !== "countdown") {
+    activeRoomId = null;
+    setGameWaitingState(false);
+    showView("lobby");
+    renderRooms();
+    return;
+  }
+
+  activeRoomId = String(room.id);
+  stake = room.stake;
+  botPlayers = 8 + Math.floor(Math.random() * 16);
+  setGameWaitingState(false);
+  showView("pick");
+  $("pick-stake").textContent = `${stake} ETB`;
+  $("pick-cost").textContent = String(stake);
+  renderWinningCards();
+  updatePickInfo();
+  buildCardGrid();
+  renderCartelaPreview();
+  startPickCountdown(roomState.startsAt, roomState.roundKey);
+  simulateOthersPicking();
+}
+
+function finishActiveRoomRound() {
+  const room = activeRoomId ? getLobbyRoom(activeRoomId) : null;
+  if (!room || roomSourceStatus(room) !== "waiting") return;
+  scheduleRoomCountdown(room.id);
+}
+
+function showWinnerOverlay(outcome, winnerName) {
+  const overlay = $("winner-overlay");
+  const name = $("winner-overlay-name");
+  const message = $("winner-overlay-message");
+  const seconds = $("winner-overlay-seconds");
+  if (!overlay || !name || !message || !seconds) return;
+
+  clearInterval(winnerTimer);
+  const isPlayerWinner = outcome === "win";
+  let remaining = 5;
+  overlay.className = `lb-winner-overlay is-${isPlayerWinner ? "win" : "lose"}`;
+  name.textContent = winnerName;
+  message.textContent = isPlayerWinner ? "You won this round!" : "Another player won this round.";
+  seconds.textContent = String(remaining);
+  overlay.hidden = false;
+  overlay.animate(
+    [{ opacity: 0, transform: "scale(1.02)" }, { opacity: 1, transform: "scale(1)" }],
+    { duration: 300, easing: "ease-out" }
+  );
+  name.focus?.();
+
+  winnerTimer = setInterval(() => {
+    remaining -= 1;
+    seconds.textContent = String(Math.max(0, remaining));
+    if (remaining <= 0) returnToCardSelection();
+  }, 1000);
+}
+
 function showRoundResult(outcome, winnerName, kind = "LINE", cardId = null) {
   const result = $("round-result");
   if (!result) return;
@@ -1026,15 +1549,27 @@ function showRoundResult(outcome, winnerName, kind = "LINE", cardId = null) {
   );
 }
 
-function winningCellIndexes(card, hit, kind) {
+function bingoLines() {
   const lines = [];
   for (let row = 0; row < 5; row++) lines.push([0, 1, 2, 3, 4].map((column) => row * 5 + column));
   for (let column = 0; column < 5; column++) lines.push([0, 1, 2, 3, 4].map((row) => row * 5 + column));
   lines.push([0, 6, 12, 18, 24], [4, 8, 12, 16, 20]);
-  if (kind === "BLACKOUT") return Array.from({ length: 25 }, (_, index) => index);
-  if (kind === "CORNERS") return [0, 4, 20, 24];
-  const line = lines.find((indexes) => indexes.every((index) => cellHit(card, index, hit)));
-  return line || [];
+  return lines;
+}
+
+function completedBingoLines(card, hit) {
+  return bingoLines().filter((indexes) => indexes.every((index) => cellHit(card, index, hit)));
+}
+
+function winningCellIndexes(card, hit, kind) {
+  if (kind === "FULL HOUSE" || kind === "BLACKOUT") return Array.from({ length: 25 }, (_, index) => index);
+
+  const target = Math.max(1, Number.parseInt(String(kind), 10) || 1);
+  const indexes = new Set();
+  completedBingoLines(card, hit)
+    .slice(0, target)
+    .forEach((line) => line.forEach((index) => indexes.add(index)));
+  return [...indexes];
 }
 
 function markLoserCards() {
@@ -1062,6 +1597,7 @@ function buildBoard() {
     const d = document.createElement("div");
     d.className = "lb-dot";
     d.dataset.n = String(n);
+    d.dataset.letter = letterFor(n);
     d.textContent = String(n);
     board.appendChild(d);
   }
@@ -1076,13 +1612,8 @@ function paintBoard() {
 
 function renderMineCards() {
   const wrap = $("mine-cards");
-  const noCardPanel = $("no-card-panel");
-  const cardNumber = $("game-card-number");
   const hit = activeHitSet();
   const calledSet = new Set(called);
-  if (noCardPanel) noCardPanel.hidden = !gameWaiting;
-  updateHeldCardPanel();
-  if (cardNumber) cardNumber.textContent = selectedCardNumbersText();
   wrap.replaceChildren(
     ...[...selected].map((id) => {
       const card = ensureCard(id);
@@ -1091,7 +1622,7 @@ function renderMineCards() {
       el.className = "lb-card";
       el.dataset.id = String(id);
       el.innerHTML = `
-        <div class="lb-card-id">CARD ${id}</div>
+        <div class="lb-mine-card-tag">Card #${id}</div>
         <div class="lb-binghead">${LETTERS.map((letter) => `<span>${letter}</span>`).join("")}</div>
         <div class="lb-cells"></div>
       `;
@@ -1146,6 +1677,7 @@ function nextCall() {
     clearInterval(callTimer);
     if (!claimed) {
       playing = false;
+      finishActiveRoomRound();
       $("game-status").textContent = "No Bingo — round over";
       showRoundResult("lose", "No player");
       markLoserCards();
@@ -1157,7 +1689,11 @@ function nextCall() {
   called.push(n);
   if (!autoMarkingEnabled) manualMarked.delete(n);
   const letter = letterFor(n);
-  $("call-ball").textContent = String(n);
+  const ballEl = $("call-ball");
+  if (ballEl) {
+    ballEl.textContent = String(n);
+    ballEl.dataset.letter = letter;
+  }
   $("call-letter").textContent = letter;
   $("call-count").textContent = String(called.length);
   updateRecentCalls();
@@ -1185,22 +1721,16 @@ function cellHit(card, index, hit) {
 }
 
 function bestWinKind(card, hit) {
-  const all = Array.from({ length: 25 }, (_, i) => i);
-  if (all.every((i) => cellHit(card, i, hit))) return "BLACKOUT";
-  const hasX =
-    [0, 6, 12, 18, 24].every((i) => cellHit(card, i, hit)) &&
-    [4, 8, 12, 16, 20].every((i) => cellHit(card, i, hit));
-  if (hasX) return "X";
-  if ([0, 4, 20, 24].every((i) => cellHit(card, i, hit))) return "CORNERS";
-  for (let r = 0; r < 5; r++) {
-    if ([0, 1, 2, 3, 4].every((c) => cellHit(card, r * 5 + c, hit))) return "LINE";
-  }
-  for (let c = 0; c < 5; c++) {
-    if ([0, 1, 2, 3, 4].every((r) => cellHit(card, r * 5 + c, hit))) return "LINE";
-  }
-  if ([0, 6, 12, 18, 24].every((i) => cellHit(card, i, hit))) return "LINE";
-  if ([4, 8, 12, 16, 20].every((i) => cellHit(card, i, hit))) return "LINE";
-  return null;
+  if (!card) return null;
+
+  const pattern = getWinningPattern();
+  const all = Array.from({ length: 25 }, (_, index) => index);
+  if (pattern === "full-house") return all.every((index) => cellHit(card, index, hit)) ? "FULL HOUSE" : null;
+
+  const requiredLines = Number(pattern);
+  const completedLines = completedBingoLines(card, hit).length;
+  if (completedLines < requiredLines) return null;
+  return `${requiredLines} ${requiredLines === 1 ? "LINE" : "LINES"}`;
 }
 
 function playerHasBingo() {
@@ -1234,12 +1764,20 @@ function claimBingo() {
   claimed = true;
   playing = false;
   clearInterval(callTimer);
+  finishActiveRoomRound();
 
-  const mult = kind === "BLACKOUT" ? 1 : kind === "X" ? 0.55 : kind === "CORNERS" ? 0.35 : 0.22;
+  const mult = kind === "FULL HOUSE" ? 1 : 0.22;
   const win = Math.max(stake, Math.round(prizePool() * mult));
   balance += win;
   saveBalance();
   renderBalance();
+  recordPlayerTransaction({
+    type: "win",
+    method: "Derash Prize Win",
+    amount: win,
+    status: "completed",
+    details: `${kind} · Card #${winCard}`,
+  });
   rememberWinningCard(stake, winCard, PLAYER_NAME, win);
   roundOutcome = "win";
   roundWinnerName = PLAYER_NAME;
@@ -1250,23 +1788,28 @@ function claimBingo() {
   renderMineCards();
   toast("WON! +" + fmt(win), "win");
   $("bingo-btn").disabled = true;
+  showWinnerOverlay("win", PLAYER_NAME);
 }
 
 function botWins() {
   claimed = true;
   playing = false;
   clearInterval(callTimer);
+  finishActiveRoomRound();
+  const winnerName = BOT_WINNER_NAMES[Math.floor(Math.random() * BOT_WINNER_NAMES.length)] || "Another player";
   roundOutcome = "lose";
-  roundWinnerName = "Another player";
+  roundWinnerName = winnerName;
   $("bingo-btn").disabled = true;
-  $("game-status").textContent = "Another player claimed Bingo";
-  showRoundResult("lose", "Another player");
+  $("game-status").textContent = `${winnerName} claimed Bingo`;
+  showRoundResult("lose", winnerName);
   renderMineCards();
   toast("SOMEONE ELSE WON", "lose");
+  showWinnerOverlay("lose", winnerName);
 }
 
 function leaveGame() {
   const wasWaiting = gameWaiting;
+  hideWinnerOverlay();
   if (wasWaiting && entryCharged) {
     balance += stake * selected.size;
     saveBalance();
@@ -1274,7 +1817,9 @@ function leaveGame() {
   }
   clearInterval(callTimer);
   clearInterval(pickTimer);
+  pickEndsAt = 0;
   stopRoomUpdates();
+  stopRoomStatusUpdates();
   playing = false;
   gameWaiting = false;
   entryCharged = false;
@@ -1504,10 +2049,16 @@ function copyDepositAccount() {
 
 function bind() {
   $("start-game").addEventListener("click", startGame);
+  document.querySelectorAll("[data-mobile-nav]").forEach((button) => {
+    button.addEventListener("click", () => handleMobileNav(button.dataset.mobileNav));
+  });
+  $("close-mobile-panel")?.addEventListener("click", closeMobilePanel);
+  $("mobile-panel")?.addEventListener("click", (event) => {
+    if (event.target === $("mobile-panel")) closeMobilePanel();
+  });
   $("random-one").addEventListener("click", () => randomPick(1));
   $("random-two").addEventListener("click", () => randomPick(2));
   $("bingo-btn").addEventListener("click", claimBingo);
-  $("no-card-button").addEventListener("click", () => toast("SELECT A CARD BEFORE PLAYING", "lose"));
   $("leave-game").addEventListener("click", leaveGame);
   const autoToggle = $("auto-mark-toggle");
   if (autoToggle) {
@@ -1545,9 +2096,40 @@ function startClock() {
   // Kept as a small lifecycle hook for the game shell; the lobby intentionally has no clock.
 }
 
+loadCardCatalog();
 renderBalance();
 bind();
 if (startingBonusAwarded > 0) toast(`STARTING BONUS +${fmt(startingBonusAwarded)} ETB`, "win");
-startClock();
-showView("lobby");
-loadCardCatalog();
+if (window.location.hash === "#game" || window.location.search.includes("view=game")) {
+  enterRoom("10");
+  selected.clear();
+  selected.add(97);
+  selected.add(99);
+  entryCharged = true;
+  beginLiveGame();
+  called = [69];
+  callPool = callPool.filter((n) => n !== 69);
+  paintBoard();
+  const ballEl = $("call-ball");
+  if (ballEl) {
+    ballEl.textContent = "69";
+    ballEl.dataset.letter = "O";
+  }
+  $("call-letter").textContent = "O";
+  $("call-count").textContent = "1";
+  updateRecentCalls();
+  renderMineCards();
+} else if (window.location.hash === "#pick" || window.location.search.includes("view=pick")) {
+  showView("pick");
+  stake = 10;
+  $("pick-stake").textContent = `${stake} ETB`;
+  $("pick-cost").textContent = String(stake);
+  selected.clear();
+  selected.add(97);
+  selected.add(99);
+  updatePickInfo();
+  buildCardGrid();
+  renderCartelaPreview();
+} else {
+  showView("lobby");
+}
